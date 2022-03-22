@@ -5,7 +5,7 @@ ILOSTLBEGIN
 #include <time.h>
 #include <sys/time.h>
 #include <string>
-
+#include <filesystem>
 #include <list>
 #include<queue>
 
@@ -24,7 +24,7 @@ int **R; /* matriz demanda |m|x|f|: quantidade de cada pessoa com habilidade k_a
 char instanceG[50];
 char instanceKR[50];
 
-
+char CURRENT_DIR[500];
 
 //double runTime;
 #define BILLION 1000000000L
@@ -85,25 +85,25 @@ void load_Graph(char arq[], bool show){
 //    }
 
 //     Triangular Superior
-//    for (int u = 0; u < num_vertices; u++){
-//        for (int v = u+1; v < num_vertices; v++)
-//            G[v][u] = G[u][v];
-//    }
+    // for (int u = 0; u < num_vertices; u++){
+    //     for (int v = u+1; v < num_vertices; v++)
+    //         G[v][u] = G[u][v];
+    // }
 
 //     Dense
-    for (int u = 0; u < num_vertices; u++){
-        for (int v = u+1; v < num_vertices; v++){
-            if (G[u][v] == 1 || G[v][u] == 0){
-                G[v][u] = 1;
-            }else if (G[v][u] == 1 || G[u][v] == 0){
-                G[u][v] = 1;
-            }else if (G[u][v] == -1 || G[v][u] == 0){
-                G[v][u] = -1;
-            }else if (G[v][u] == -1 || G[u][v] == 0){
-                G[u][v] = -1;
-            }
-        }
-    }
+   for (int u = 0; u < num_vertices; u++){
+       for (int v = u+1; v < num_vertices; v++){
+           if (G[u][v] == 1 || G[v][u] == 0){
+               G[v][u] = 1;
+           }else if (G[v][u] == 1 || G[u][v] == 0){
+               G[u][v] = 1;
+           }else if (G[u][v] == -1 || G[v][u] == 0){
+               G[v][u] = -1;
+           }else if (G[v][u] == -1 || G[u][v] == 0){
+               G[u][v] = -1;
+           }
+       }
+   }
 
 
     if(show){
@@ -184,7 +184,7 @@ static void
 instanceReader(bool show, int vert, int graph_class, int class_type, string instance_type){
     char arq1[600]; char arq2[600]; char arq3[600];
     char arq_base[500];
-    sprintf(arq_base, "/home/felipe/Documents/UFC/MDCC/Problema-FEGS/cplex-fegs/codigo-flp/fegs/instances_COR");
+    sprintf(arq_base, "%s/instances_COR", CURRENT_DIR);
 
     if (instance_type == "random"){
         sprintf(instanceG, "%dverticesS%d", vert, graph_class);
@@ -193,17 +193,17 @@ instanceReader(bool show, int vert, int graph_class, int class_type, string inst
         sprintf(instanceG, "%dvertices_%s_S%d", vert, instance_type.c_str(), graph_class);
 
     }else{
-        cout << "[INFO]: not a valid instance type" << endl;
+        cout << "[INFO] not a valid instance type" << endl;
     }
 
 
     sprintf(arq1, "%s/%dVertices/%s.txt", arq_base, vert, instanceG);
-    cout << "[INFO]: Read graph: "<< instanceG << endl;
+    cout << "[INFO] Read graph: "<< instanceG << endl;
 
     sprintf(instanceKR, "%dVertices/class1/%d", vert, class_type);
     sprintf(arq2, "%s/%s/K.txt", arq_base, instanceKR);
     sprintf(arq3, "%s/%s/R.txt", arq_base, instanceKR);
-    cout << "[INFO]: Instance class type: "<< instanceKR << endl;
+    cout << "[INFO] Instance class type: "<< instanceKR << endl;
 
 
     load_Graph(arq1, show); load_K(arq2, show); load_R(arq3, show);
@@ -269,68 +269,56 @@ static void
 
 int main()
 {
-
-    // ****************** LEITURA DA INSTANCIA *****************************
-//    testeGrafos();
-
-
+    getcwd(CURRENT_DIR, 500);
+    char intances_types[3][12] =   { "random", "bitcoinotc", "epinions"};
 
     double cpu0_exec, cpu1_exec;
-//    instanceReader(1,5, 111,1, "random");
+    // instanceReader(1,5, 1,1, "random");
     cpu0_exec = get_wall_time();
-    char intances_types[3][12] =   { "random", "bitcoinotc", "epinions"};
-    int vert = 25;
-    for(int i=0; i<3; i++){
-        for(int ctype = 1; ctype < 7; ctype++){
-            for(int gclass = 1; gclass<4; gclass++){
+    int vert = 4;
+    for(int i=0; i<1; i++){
+        for(int gclass = 1; gclass<2; gclass++){
+            for(int ctype = 1; ctype < 2; ctype++){
 
                 IloEnv env;
 
                 try {
 
-
-                    //        int vert = 25; int graph_class = 1; int class_type = 5;
-                    //        instanceReader(1,vert, graph_class,class_type, "random");
-
                     instanceReader(0,vert, gclass,ctype, intances_types[i]);
+                    
                     // create ILP problem
-
                     IloModel model(env);
+                    cout << "[INFO]: Create variables" << endl;
                     BoolVar3Matrix x(env,num_vertices);
                     BoolVar3Matrix y(env,num_vertices);
                     BoolVar4Matrix f(env,num_vertices);
                     IntVarMatrix lambda(env,num_vertices);
                     allocVars(env, x, y, f, lambda);
-
+                    cout << "[INFO]: Create model" << endl;
                     createModel(model, x, y, f, lambda);
                     IloCplex cplex;
                     cplex = IloCplex(model);
                     //         cplex.exportModel("FEGS.lp");
 
                     double cpu0, cpu1;
-                    cpu0 = get_wall_time();
-
                     cplex.setParam(IloCplex::TiLim, 7200); // tempo limite 2h
                     cplex.setParam(IloCplex::TreLim, 7000); // limite de 7GB de memoria
-
+                    
+                    cpu0 = get_wall_time();
                     if (!cplex.solve()){
-                        env.error() << "Failed to optimize LP." << endl;
+                        env.error() << "[INFO]: Failed to optimize ILP." << endl;
                         throw(-1);
                     }
-
-
                     cpu1 = get_wall_time();
                     double runTime = cpu1 - cpu0;
-
 
                     cout << "Solution status = " << cplex.getStatus()   << endl;
                     cout << "Solution value  = " << cplex.getObjValue() << endl;
                     cout << "cplex time: " << cplex.getTime() << endl;
-                    cout << "time: " << runTime << endl;
+                    cout << "run time: " << runTime << endl;
 
                     //                displaySolution(cplex,x,y,f,lambda);
-                    //                saveSolution(cplex,x,y,f,class_type);
-                    saveSolution(cplex,x,y,f,gclass);
+                    saveSolution(cplex,x,y,f,ctype);
                     saveResults(cplex,runTime);
 
 
@@ -350,7 +338,7 @@ int main()
 
     cout << "--------------------------------------------------------" << endl;
     cpu1_exec = get_wall_time();
-    cout << "Tempo de exec: " << cpu1_exec - cpu0_exec << endl;
+    cout << "Total time: " << cpu1_exec - cpu0_exec << endl;
 
     return 0;
 }
@@ -676,7 +664,7 @@ static void
     char arq[1000];
     char arqv_instance[50];
     sprintf(arqv_instance, "%s_%d", instanceG,class_type);
-    sprintf(arq, "/home/felipe/Documents/UFC/MDCC/Problema-FEGS/cplex-fegs/codigo-flp/fegs/results/%s.txt", arqv_instance);
+    sprintf(arq, "%s/results/%s.txt",CURRENT_DIR, arqv_instance);
 
     FILE *file = fopen(arq, "w");
     if (file == NULL)
@@ -733,12 +721,10 @@ static void
     saveResults(IloCplex& cplex,
                    double timeF){
 
-//    char *arq = "/home/felipe/Documents/UFC/MDCC/Problema-FEGS/codigo-flp/fegs/results/testes1.ods";
     char arq[600];
-//    sprintf(arq, "/home/felipe/Documents/UFC/MDCC/Problema-FEGS/cplex-fegs/codigo-flp/fegs/results/%s.ods", instanceG);
-    sprintf(arq, "/home/felipe/Documents/UFC/MDCC/Problema-FEGS/cplex-fegs/codigo-flp/fegs/results/25V_DENSE.ods", instanceG);
+    sprintf(arq, "%s/results/%d_Vertices.ods",CURRENT_DIR, num_vertices);
+    
     ofstream outputTable;
-//    outputTable.open(arq+"testes1.ods",ios:: app);
     outputTable.open(arq,ios:: app);
     if(outputTable.is_open()){
 
@@ -751,8 +737,8 @@ static void
         outputTable << cplex.getObjValue() << ";"; // valor fo
         outputTable << cplex.getNnodes() << ";"; // num nos
         outputTable << cplex.getMIPRelativeGap() <<";"; // gap
-        outputTable << cplex.getTime() <<  ";"; // tempo execucao cplex
         outputTable << timeF <<  ";"; // tempo execucao flp
+        outputTable << cplex.getTime() <<  ";"; // tempo execucao cplex
         outputTable << " \n ";
 
 
