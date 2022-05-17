@@ -52,6 +52,7 @@ SRCDIR = ./src
 
 all: make run 
 run: run_mip 
+run2: run_mip_decomp 
 
 #fegsCP: ./main.cpp
 #	$(CCC) $(CCFLAGS) $(CCLNDIRS) -o $@ $<  $(CCLNFLAGS)
@@ -59,11 +60,20 @@ run: run_mip
 fegs: fegs.o
 	$(CCC) $(CCFLAGS) $(CCLNDIRS) -o $(SRCDIR)/fegs $(SRCDIR)/fegs.o $(CCLNFLAGS)
 
+fegs_decomp: fegs_decomp.o
+	$(CCC) $(CCFLAGS) $(CCLNDIRS) -o $(SRCDIR)/fegs_decomp $(SRCDIR)/fegs_decomp.o $(CCLNFLAGS)
+
 fegs.o: $(SRCDIR)/fegs.cpp
 	$(CCC) -c $(CCFLAGS) $(SRCDIR)/fegs.cpp -o $(SRCDIR)/fegs.o
 
+fegs_decomp.o: $(SRCDIR)/fegs_decomp.cpp
+	$(CCC) -c $(CCFLAGS) $(SRCDIR)/fegs_decomp.cpp -o $(SRCDIR)/fegs_decomp.o
+
 run_mip: fegs 
 	$(SRCDIR)/fegs
+
+run_mip_decomp: fegs_decomp 
+	$(SRCDIR)/fegs_decomp
 
 clean:
 	rm -rf *.o $(SRCDIR)/*.o *~ $(SRCDIR)/fegs $(SRCDIR)/main #excluir o binario fegsCP
