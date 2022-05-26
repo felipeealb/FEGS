@@ -82,33 +82,6 @@ void load_Graph(char arq[], bool show, string instance_type){
     }
     fclose(inst);
 
-//     Triangular Inferior
-//    for (int u = 0; u < num_vertices; u++){
-//        for (int v = u+1; v < num_vertices; v++)
-//            G[u][v] = G[v][u];
-//    }
-
-//     Triangular Superior
-    // for (int u = 0; u < num_vertices; u++){
-    //     for (int v = u+1; v < num_vertices; v++)
-    //         G[v][u] = G[u][v];
-    // }
-
-//     Dense
-//    for (int u = 0; u < num_vertices; u++){
-//        for (int v = u+1; v < num_vertices; v++){
-//            if (G[u][v] == 1 && G[v][u] == 0){
-//                G[v][u] = 1;
-//            }else if (G[v][u] == 1 && G[u][v] == 0){
-//                G[u][v] = 1;
-//            }else if (G[u][v] == -1 && G[v][u] == 0){
-//                G[v][u] = -1;
-//            }else if (G[v][u] == -1 && G[u][v] == 0){
-//                G[u][v] = -1;
-//            }
-//        }
-//    }
-
     if (instance_type == "random"){
         // cout << "random" << endl;
         for (int u = 0; u < num_vertices; u++){
@@ -239,16 +212,16 @@ static void
     allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y);
 
 static void
-    allocVars_uv (IloEnv env, BoolVar4Matrix f, IntVarMatrix lambda);
+    allocVars_uv (IloEnv env, BoolVarMatrix f, IloIntVar lambda);
 
 static void
-    createModel_uv (IloModel model, BoolVar4Matrix f, IntVarMatrix lambda, int u, int v);
+    createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v);
 
 static void
    createModel_Decomp (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y);
 
 static void
-   objFunction_uv (IloModel model, BoolVar4Matrix f, int u, int v);
+   objFunction_uv (IloModel model, BoolVarMatrix f, int u, int v);
 
 static void
    objFunction_Decomp (IloModel model, BoolVar3Matrix y);
@@ -263,10 +236,11 @@ static void
    rest3 (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y);
 
 static void
-   rest4_uv (IloModel model, BoolVar4Matrix f, int u, int v);
+   rest4_uv (IloModel model, BoolVarMatrix f, int u, int v);
+
 
 static void
-   rest5_uv (IloModel model, BoolVar4Matrix f, IntVarMatrix lambda, int u, int v);
+   rest5_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v);
 
 
 static void
@@ -333,20 +307,6 @@ int main()
     char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
     // graph 25 vertices epinions_S3: disconnected (9-18-22) 
     
-    // instanceReader(1,25, 2,2, intances_types[0]);
-
-    // createGraph_Zuv();
-
-    // cout << "-------------------------------------------------- \n\n" << endl;
-    // cout << " Adjacency Matrix Zuv \n";
-    //     for (int u = 0; u < num_vertices; u++){
-    //         for (int v = 0; v < num_vertices; v++)
-    //             cout <<  Graph_Zuv[u][v] << " ";
-    //         cout<< "\n";
-    // }
-
-
-
     double cpu0_exec, cpu1_exec;
     cpu0_exec = get_wall_time();
     int vert = 25;
@@ -364,7 +324,8 @@ int main()
                     createGraph_Zuv();
                     double timeZ_final = get_wall_time();
                     double timeGraph = timeZ_final - timeZ_start;
-
+                    cout << "[INFO]: Create graph Zuv" << endl;
+                    
                     // create ILP problem
                     IloModel model(env);
                     cout << "[INFO]: Create variables decomposed" << endl;
@@ -389,17 +350,17 @@ int main()
                         throw(-1);
                     }
                     cpu1 = get_wall_time();
-                    double runTime = cpu1 - cpu0;
-                    double timeFinal = runTime + timeGraph;
+                    double runTime = (cpu1 - cpu0) + timeGraph;
+                    
 
                     cout << "Solution status = " << cplex.getStatus()   << endl;
                     cout << "Solution value  = " << cplex.getObjValue() << endl;
                     cout << "cplex time: " << cplex.getTime() << endl;
-                    cout << "run time: " << timeFinal << endl;
+                    cout << "run time: " << runTime << endl;
 
                     // displaySolution(cplex,x,y);
                     // saveSolution(cplex,x,y,f,ctype);
-                    saveResults(cplex,timeFinal);
+                    saveResults(cplex,runTime);
 
 
                 }catch (IloException& e) {
@@ -423,29 +384,17 @@ int main()
     return 0;
 }
 
+
 static void
-allocVars_uv (IloEnv env, BoolVar4Matrix f, IntVarMatrix lambda){
+allocVars_uv (IloEnv env, BoolVarMatrix f, IloIntVar lambda){
 
-
-    // var f[u][v][p][q]: if arc pq is used in the flow associate to path(u,v)
-    for (int u=0; u<num_vertices; u++){
-        f[u] = BoolVar3Matrix(env, num_vertices);
-        for (int v=u+1; v<num_vertices; v++){ // u<v
-            f[u][v] = BoolVarMatrix(env, num_vertices);
-            for (int p=0; p<num_vertices; p++)
-                f[u][v][p] = IloBoolVarArray(env, num_vertices);
-        }
-    }
-
-
-    // var lambda[u][v]
-    for (int u = 0; u < num_vertices; u++){
-        lambda[u] = IloIntVarArray(env, num_vertices, 0, num_vertices*(num_vertices-1)); // must put the bounds
-    }
-
+    // var f(u,v)[p][q]: if arc pq is used in the flow associate to path(u,v)
+    for (int p=0; p<num_vertices; p++)
+        f[p] = IloBoolVarArray(env, num_vertices);
+    
+    
 
 }
-
 
 static void
 allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y){
@@ -469,26 +418,26 @@ allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y){
 
 
 static void
-createModel_uv (IloModel model, BoolVar4Matrix f, IntVarMatrix lambda, int u, int v){
+createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v){
 
-    // add var f[u][v][p][q]
+    // add var f(u,v)[p][q]
     if(G[u][v] < 1){ // and u,v not in E{+}
         for(int p=0; p<num_vertices; p++)
             for(int q=0; q<num_vertices; q++) // for all arc (p,q)
                 if(p!=q && G[p][q] != 0){ // must have an edge(p,q) to have an arc (p,q)
-                    char name[30];
-                    sprintf(name, "F%d%d%d%d", u+1, v+1,p+1, q+1);
-                    f[u][v][p][q].setName(name);
-                    model.add(f[u][v][p][q]);
+                    char name[50];
+                    sprintf(name, "F(%d,%d)%d%d", u+1, v+1,p+1, q+1);
+                    f[p][q].setName(name);
+                    model.add(f[p][q]);
                 }
     }
 
-    // add var lambda[u][v]
+    // add var lambda(u,v)
     if(G[u][v] < 1){ // and u,v not in E{+}
         char name[20];
-        sprintf(name, "lambd%d%d", u+1, v+1);
-        lambda[u][v].setName(name);
-        model.add(lambda[u][v]);
+        sprintf(name, "lambd(%d,%d)", u+1, v+1);
+        lambda.setName(name);
+        model.add(lambda);
     }
 
     objFunction_uv (model,f,u,v);
@@ -498,7 +447,6 @@ createModel_uv (IloModel model, BoolVar4Matrix f, IntVarMatrix lambda, int u, in
 
 
 }
-
 
 
 static void
@@ -516,15 +464,13 @@ createGraph_Zuv(){
     for(int u=0; u<num_vertices;u++)
         for(int v=u+1; v<num_vertices; v++)
             if(G[u][v] < 1 ){
-                // cout << "\n --------------------------------------------------" << endl;
-                // cout << "processando par de vertices: " << u+1<< ", " << v+1 << endl;
 
                 IloEnv env;
                 try{
                     IloModel model(env);
                     // cout << "[INFO]: Create variables" << endl;
-                    BoolVar4Matrix f(env,num_vertices);
-                    IntVarMatrix lambda(env,num_vertices);
+                    BoolVarMatrix f(env,num_vertices);
+                    IloIntVar lambda(env);
                     allocVars_uv(env,f,lambda);
                     createModel_uv(model,f,lambda,u,v);        // can optmize var f, put all dif u,v = zero or better use 2 indices
                     IloCplex cplex;
@@ -559,8 +505,13 @@ createGraph_Zuv(){
                 Graph_Zuv[u][v] = 1;
                 Graph_Zuv[v][u] = 1;
             }
-
-
+    // cout << "-------------------------------" << endl;
+    // cout << " Adjacency Matrix Zuv\n";
+    // for (int u = 0; u < num_vertices; u++){
+    //     for (int v = 0; v < num_vertices; v++)
+    //         cout <<  Graph_Zuv[u][v] << " ";
+    //     cout<< "\n";
+    // }
 
 }
 
@@ -600,13 +551,13 @@ createModel_Decomp (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y){
 
 
 static void
-objFunction_uv (IloModel model, BoolVar4Matrix f, int u, int v){
+objFunction_uv (IloModel model, BoolVarMatrix f, int u, int v){
     IloEnv env = model.getEnv();
     IloExpr objExpr(env);
     for(int p=0; p<num_vertices; p++)
         for(int q=0; q<num_vertices; q++)
             if(G[u][v] < 1 && p!= q && G[p][q] != 0){ // (u,v) not in E+ and (p,q) is a possible arc between (u,v)-path
-                objExpr += f[u][v][p][q];
+                objExpr += f[p][q];
             }
 
     IloObjective obj = IloMinimize(env, objExpr);
@@ -698,7 +649,7 @@ rest3 (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y){
 }
 
 static void
-rest4_uv (IloModel model, BoolVar4Matrix f, int u, int v){
+rest4_uv (IloModel model, BoolVarMatrix f, int u, int v){
     IloEnv env = model.getEnv();
 
     if(G[u][v] < 1){  // for all u<v and (u,v) not in E+
@@ -706,8 +657,8 @@ rest4_uv (IloModel model, BoolVar4Matrix f, int u, int v){
             IloExpr sumArcs(env);
             for(int p = 0; p<num_vertices; p++) // for every arc (p,q) <=> (p,q) or (q,p) in E 
                 if(p!=q && G[p][q] != 0){ //  (p,q) in E <=> (q,p) in E
-                    sumArcs += f[u][v][p][q];
-                    sumArcs += -f[u][v][q][p];
+                    sumArcs += f[p][q];
+                    sumArcs += -f[q][p];
                 }
             if(q == u){
                 IloExpr expr(env);
@@ -724,7 +675,7 @@ rest4_uv (IloModel model, BoolVar4Matrix f, int u, int v){
 }
 
 static void
-rest5_uv (IloModel model, BoolVar4Matrix f, IntVarMatrix lambda, int u, int v){
+rest5_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v){
     IloEnv env = model.getEnv();
     
     if(G[u][v] < 1 ){ // (u,v) not in E+
@@ -732,9 +683,9 @@ rest5_uv (IloModel model, BoolVar4Matrix f, IntVarMatrix lambda, int u, int v){
         for(int p = 0; p<num_vertices; p++)
             for(int q = 0; q<num_vertices; q++)
                 if(p!=q && G[p][q] < 0){ // sum of negatives arcs(A-)
-                    expr += f[u][v][p][q];
+                    expr += f[p][q];
                 }
-        model.add(expr - 2*lambda[u][v] == 0); // pair number of negatives edges
+        model.add(expr - 2*lambda == 0); // pair number of negatives edges
         expr.end();
     }
         
@@ -866,7 +817,7 @@ static void
                    double timeF){
 
     char arq[600];
-    sprintf(arq, "%s/results/%d_Vertices_16-05-2022_Decomp.ods",CURRENT_DIR, num_vertices);
+    sprintf(arq, "%s/results/%d_Vertices_17-05-2022_Decomp.ods",CURRENT_DIR, num_vertices);
     
     ofstream outputTable;
     outputTable.open(arq,ios:: app);

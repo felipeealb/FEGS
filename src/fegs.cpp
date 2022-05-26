@@ -48,7 +48,7 @@ double get_wall_time(){
 
 //--------------------------------------------read data------------------------------------------------------------------
 //load matrix
-void load_Graph(char arq[], bool show){
+void load_Graph(char arq[], bool show, string instance_type){
 
     FILE *inst = fopen(arq,"r");
     if(!inst)
@@ -65,6 +65,7 @@ void load_Graph(char arq[], bool show){
         for (int v=0;v<num_vertices;v++)
         {
             fscanf(inst,"%d",&edge_weight);
+            // G[u][v] = edge_weight;
             if(u == v){
                 G[u][v] = 1;
             }else{
@@ -72,38 +73,31 @@ void load_Graph(char arq[], bool show){
                     G[u][v] = 1;
                 else if(edge_weight<0)
                     G[u][v] = -1;
+                else if(edge_weight==0)
+                    G[u][v] = 0;
             }
         }
 
     }
     fclose(inst);
 
-//     Triangular Inferior
-//    for (int u = 0; u < num_vertices; u++){
-//        for (int v = u+1; v < num_vertices; v++)
-//            G[u][v] = G[v][u];
-//    }
 
-//     Triangular Superior
-    // for (int u = 0; u < num_vertices; u++){
-    //     for (int v = u+1; v < num_vertices; v++)
-    //         G[v][u] = G[u][v];
-    // }
-
-//     Dense
-   for (int u = 0; u < num_vertices; u++){
-       for (int v = u+1; v < num_vertices; v++){
-           if (G[u][v] == 1 || G[v][u] == 0){
-               G[v][u] = 1;
-           }else if (G[v][u] == 1 || G[u][v] == 0){
-               G[u][v] = 1;
-           }else if (G[u][v] == -1 || G[v][u] == 0){
-               G[v][u] = -1;
-           }else if (G[v][u] == -1 || G[u][v] == 0){
-               G[u][v] = -1;
-           }
-       }
-   }
+    if (instance_type == "random"){
+        // cout << "random" << endl;
+        for (int u = 0; u < num_vertices; u++){
+            for (int v = u+1; v < num_vertices; v++){
+                if (G[u][v] == 1 && G[v][u] != 1){
+                    G[v][u] = 1;
+                }else if (G[v][u] == 1 && G[u][v] != 1){
+                    G[u][v] = 1;
+                }else if (G[u][v] == -1 && G[v][u] != -1){
+                    G[v][u] = -1;
+                }else if (G[v][u] == -1 && G[u][v] != -1){
+                    G[u][v] = -1;
+                }
+            }
+        }
+    }
 
 
     if(show){
@@ -206,7 +200,7 @@ instanceReader(bool show, int vert, int graph_class, int class_type, string inst
     cout << "[INFO] Instance class type: "<< instanceKR << endl;
 
 
-    load_Graph(arq1, show); load_K(arq2, show); load_R(arq3, show);
+    load_Graph(arq1, show, instance_type); load_K(arq2, show); load_R(arq3, show);
 
 }
 
@@ -267,25 +261,50 @@ static void
 static void
     testeGrafos();
 
+void traverse(int u, bool visited[]) {
+   visited[u] = true; //mark v as visited
+   for(int v = 0; v<num_vertices; v++) {
+      if(G[u][v]) {
+         if(!visited[v])
+            traverse(v, visited);
+      }
+   }
+}
+bool isConnected() {
+   bool *vis = new bool[num_vertices];
+   //for all vertex u as start point, check whether all nodes are visible or not
+   for(int u = 0; u < num_vertices; u++) {
+      for(int i = 0; i<num_vertices; i++)
+         vis[i] = false; //initialize as no node is visited
+         traverse(u, vis);
+      for(int i = 0; i<num_vertices; i++) {
+         if(!vis[i]) //if there is a node, not visited by traversal, graph is not connected
+            return false;
+      }
+   }
+   return true;
+}
+
 int main()
 {
     getcwd(CURRENT_DIR, 500);
-    char intances_types[3][12] =   { "random", "bitcoinotc", "epinions"};
-
+    char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
+    // graph 25 vertices epinions_S3: disconnected (9-18-22)   
+    // testeGrafos();
+        
     double cpu0_exec, cpu1_exec;
-    // instanceReader(1,5, 1,1, "random");
     cpu0_exec = get_wall_time();
-    int vert = 4;
-    for(int i=0; i<1; i++){
-        for(int gclass = 1; gclass<2; gclass++){
-            for(int ctype = 1; ctype < 2; ctype++){
+    int vert = 25;
+    for(int i=0; i<3; i++){
+        for(int gclass = 1; gclass<4; gclass++){  // 1-3
+            for(int ctype = 1; ctype < 7; ctype++){  //1-6
 
                 IloEnv env;
 
                 try {
 
                     instanceReader(0,vert, gclass,ctype, intances_types[i]);
-                    
+
                     // create ILP problem
                     IloModel model(env);
                     cout << "[INFO]: Create variables" << endl;
@@ -298,15 +317,18 @@ int main()
                     createModel(model, x, y, f, lambda);
                     IloCplex cplex;
                     cplex = IloCplex(model);
-                    //         cplex.exportModel("FEGS.lp");
-
+                    // cplex.exportModel("FEGS.lp");
+                       
                     double cpu0, cpu1;
-                    cplex.setParam(IloCplex::TiLim, 7200); // tempo limite 2h
-                    cplex.setParam(IloCplex::TreLim, 7000); // limite de 7GB de memoria
-                    
+                    cplex.setParam(IloCplex::TiLim, 7200); // time limit 2h
+                    cplex.setParam(IloCplex::TreLim, 7000); // memory limit 7GB
+                    // cplex.setParam(IloCplex::WorkMem, 2000);
+
                     cpu0 = get_wall_time();
                     if (!cplex.solve()){
                         env.error() << "[INFO]: Failed to optimize ILP." << endl;
+                        cout << "Solution status = " << cplex.getStatus()   << endl;
+
                         throw(-1);
                     }
                     cpu1 = get_wall_time();
@@ -317,8 +339,8 @@ int main()
                     cout << "cplex time: " << cplex.getTime() << endl;
                     cout << "run time: " << runTime << endl;
 
-                    //                displaySolution(cplex,x,y,f,lambda);
-                    saveSolution(cplex,x,y,f,ctype);
+                    // displaySolution(cplex,x,y,f,lambda);
+                    // saveSolution(cplex,x,y,f,ctype);
                     saveResults(cplex,runTime);
 
 
@@ -347,33 +369,34 @@ int main()
 static void
 allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y, BoolVar4Matrix f, IntVarMatrix lambda){
 
-    // var x[u][j][s]
+    // var x[u][j][s] : if worker u is in projecet j with skill s
     for (int u=0; u<num_vertices; u++){
         x[u] = BoolVarMatrix(env, num_teams);
         for (int j = 0; j < num_teams; j++)
             x[u][j] = IloBoolVarArray(env, num_skills);
     }
 
-    // var y[u][v][j]
+    // var y[u][v][j] : if worker u and v is in the same project j
     for (int u=0; u<num_vertices; u++){
         y[u] = BoolVarMatrix(env, num_vertices);
-        for (int v = 0; v < num_vertices; v++)
+        for (int v = u+1; v < num_vertices; v++) // u<v
             y[u][v] = IloBoolVarArray(env, num_teams);
     }
 
-    // var f[u][v][p][q]
+    // var f[u][v][p][q]: if arc pq is used in the flow associate to path(u,v)
     for (int u=0; u<num_vertices; u++){
         f[u] = BoolVar3Matrix(env, num_vertices);
-        for (int v=u+1; v<num_vertices; v++){ //u!=v, u<v
+        for (int v=u+1; v<num_vertices; v++){ // u<v
             f[u][v] = BoolVarMatrix(env, num_vertices);
             for (int p=0; p<num_vertices; p++)
                 f[u][v][p] = IloBoolVarArray(env, num_vertices);
         }
     }
 
+
     // var lambda[u][v]
     for (int u = 0; u < num_vertices; u++){
-        lambda[u] = IloIntVarArray(env, num_vertices, 0, num_vertices*(num_vertices-1)); // NECESSARI0 COLOCAR BOUNDS NO INT
+        lambda[u] = IloIntVarArray(env, num_vertices, 0, num_vertices*(num_vertices-1)); // must put the bounds
     }
 
 
@@ -382,11 +405,11 @@ allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y, BoolVar4Matrix f, Int
 static void
 createModel (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y, BoolVar4Matrix f, IntVarMatrix lambda){
 
-    // add var x
-    for(int j=0; j<num_teams; j++) // para todo projeto
-        for(int u=0; u< num_vertices; u++) // para todo individuo
-            for(int s=0; s<num_skills; s++){ // todas as habilidades que o individuo possui
-                if(K[u][s] > 0){ // s(u)
+    // add var x[u][j][s] in model
+    for(int j=0; j<num_teams; j++) // for all project j 
+        for(int u=0; u< num_vertices; u++) // for all worker u
+            for(int s=0; s<num_skills; s++){ // 
+                if(K[u][s] > 0){ // for all skills: s(u)
                     char name[30];
                     sprintf(name, "x%d%d%d", u+1, j+1,s+1);
                     x[u][j][s].setName(name);
@@ -394,23 +417,24 @@ createModel (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y, BoolVar4Matrix 
                 }
             }
 
-    // add var y
-    for(int u=0; u<num_vertices; u++) // para todo individuo u
-        for(int v = u+1; v<num_vertices; v++) // para todo individuo v, u!=v ou melhor u<v
-            for(int j = 0; j<num_teams; j++){ // para todo projeto j
+    // add var y[u][v][j]
+    for(int u=0; u<num_vertices; u++) // for all u 
+        for(int v = u+1; v<num_vertices; v++) // for all v: u<v
+            for(int j = 0; j<num_teams; j++){ // for all project j
                 char name[30];
                 sprintf(name, "y%d%d%d", u+1, v+1,j+1);
                 y[u][v][j].setName(name);
                 model.add(y[u][v][j]);
             }
 
-    // add var f
+
+    // add var f[u][v][p][q]
     for(int u=0; u<num_vertices; u++)
-        for(int v=u+1; v<num_vertices; v++) // para todo individuo u,v
-            if(G[u][v] < 1){ // u,v not in E
+        for(int v=u+1; v<num_vertices; v++) // for all u,v: u<v
+            if(G[u][v] < 1){ // and u,v not in E{+}
                 for(int p=0; p<num_vertices; p++)
-                    for(int q=0; q<num_vertices; q++) // para todo ARCO p,q
-                        if(p!= q && G[p][q] != 0){ // existir aresta -> 2 arcos
+                    for(int q=0; q<num_vertices; q++) // for all arc (p,q)
+                        if(p!=q && G[p][q] != 0){ // must have an edge(p,q) to have an arc (p,q)
                             char name[30];
                             sprintf(name, "F%d%d%d%d", u+1, v+1,p+1, q+1);
                             f[u][v][p][q].setName(name);
@@ -418,10 +442,11 @@ createModel (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y, BoolVar4Matrix 
                         }
             }
 
-    // add var lambda
-    for(int u = 0; u<num_vertices; u++) // para todo individuo u
-        for(int v = u+1; v<num_vertices; v++) // para todo individuo v
-            if(G[u][v] < 1){ // nao existir aresta positiva entre u e v
+
+    // add var lambda[u][v]
+    for(int u = 0; u<num_vertices; u++) //
+        for(int v = u+1; v<num_vertices; v++) // for all u,v : u<v
+            if(G[u][v] < 1){ // and u,v not in E{+}
                 char name[20];
                 sprintf(name, "lambd%d%d", u+1, v+1);
                 lambda[u][v].setName(name);
@@ -430,12 +455,12 @@ createModel (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y, BoolVar4Matrix 
 
 
     objFunction(model,y,f);
-    rest1(model, x);
-    rest2(model, x);
-    rest3(model,x,y);
-    rest4(model,y,f);
-    rest5(model,y,f);
-    rest6(model,f,lambda);
+    rest1(model, x); // max one team with one skill
+    rest2(model, x); // min skill s per team j
+    rest3(model,x,y); // linearization y with x
+    rest4(model,y,f); // flow const
+    rest5(model,y,f); // flow only if 
+    rest6(model,f,lambda); // every path with neg edges is pair
 
 
 }
@@ -446,16 +471,17 @@ objFunction (IloModel model, BoolVar3Matrix y, BoolVar4Matrix f){
 
     IloExpr objExpr(env);
     for(int u=0; u<num_vertices; u++)
-        for(int v=0; v<num_vertices; v++)
+        for(int v=u+1; v<num_vertices; v++) // for all u,v : u<v
             for(int p=0; p<num_vertices; p++)
                 for(int q=0; q<num_vertices; q++)
-                    if(G[u][v] < 1 && p!= q && G[p][q] != 0 && u<v){ // cost same team: (u,v) not in E+
+                    if(G[u][v] < 1 && p!= q && G[p][q] != 0){ // (u,v) not in E+ and (p,q) is a possible arc between (u,v)-path
                        objExpr += f[u][v][p][q];
                     }
+
     for(int u=0; u<num_vertices; u++)
-        for(int v=0; v<num_vertices; v++)
+        for(int v=u+1; v<num_vertices; v++)
             for(int j = 0; j<num_teams; j++){
-                if(u<v && G[u][v] >= 1){objExpr += y[u][v][j];}  // cost same team: (u,v) in E+
+                if(G[u][v] >= 1){objExpr += y[u][v][j];}  // (u,v) in E+
             }
 
     IloObjective obj = IloMinimize(env, objExpr);
@@ -468,7 +494,7 @@ rest1 (IloModel model, BoolVar3Matrix x){
 
     IloEnv env = model.getEnv();
 
-    // each individual use one skill in  maximum
+    // each worker uses at most one skill 
     for (int u=0; u<num_vertices; u++) {
         IloExpr expr(env);
         for (int j = 0; j <num_teams; j++) {
@@ -491,9 +517,9 @@ rest2 (IloModel model, BoolVar3Matrix x){
     for (int j=0; j <num_teams; j++) {
         for (int s=0; s <num_skills; s++) {
             IloExpr expr(env);
-            if (R[j][s] > 0) {
+            if (R[j][s] > 0) { //for all skill s in project j
                 for (int u=0; u < num_vertices; u++) {
-                    if(K[u][s] > 0)
+                    if(K[u][s] > 0) // if worker u have skill s
                         expr += x[u][j][s];
                 }
                 model.add(expr >= R[j][s]);
@@ -510,7 +536,7 @@ rest3 (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y){
 
     // set var y with x (linearization)
     for (int u=0; u<num_vertices; u++)
-        for (int v = u+1; v < num_vertices; v++) // u!=v
+        for (int v = u+1; v < num_vertices; v++) // for all u,v: u<v
             for (int j = 0; j <num_teams; j++){
                 IloExpr exprU(env);
                 IloExpr exprV(env);
@@ -525,6 +551,7 @@ rest3 (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y){
                 model.add(y[u][v][j] <= exprV);
                 exprU.end(); exprV.end();
             }
+
 }
 
 static void
@@ -532,11 +559,11 @@ rest4 (IloModel model, BoolVar3Matrix y, BoolVar4Matrix f){
     IloEnv env = model.getEnv();
 
     for(int u = 0; u<num_vertices; u++)
-        for(int v = u+1; v<num_vertices; v++) // for all u!=v indiduals such that (u,v) not in E+
-            if(G[u][v] < 1){
+        for(int v = u+1; v<num_vertices; v++) 
+            if(G[u][v] < 1){                   // for all u<v and (u,v) not in E+
                 for(int q = 0; q<num_vertices; q++){ // for fixed vertice q
                     IloExpr sumArcs(env);
-                    for(int p = 0; p<num_vertices; p++)// for every arc (p,q) <=> (p,q) in E <=> (q,p) in E
+                    for(int p = 0; p<num_vertices; p++) // for every arc (p,q) <=> (p,q) or (q,p) in E 
                         if(p!=q && G[p][q] != 0){ //  (p,q) in E <=> (q,p) in E
                             sumArcs += f[u][v][p][q];
                             sumArcs += -f[u][v][q][p];
@@ -558,18 +585,20 @@ rest4 (IloModel model, BoolVar3Matrix y, BoolVar4Matrix f){
                     }
                 }
             }
+
 }
 
 static void
 rest5 (IloModel model, BoolVar3Matrix y, BoolVar4Matrix f){
     IloEnv env = model.getEnv();
 
+    // only use flow between u,v if u,v work in the same team
     for(int u = 0; u<num_vertices; u++)
         for(int v = u+1; v<num_vertices; v++)
-            if(G[u][v] < 1){
+            if(G[u][v] < 1){  // for all u,v in V: u<v and (u,v) not in E+
                 for(int p=0; p<num_vertices; p++)
                     for(int q=0; q<num_vertices; q++)
-                        if(p!=q && G[p][q] != 0){ // (p,q) in E
+                        if(p!=q && G[p][q] != 0){ // (p,q) in A
                             IloExpr expr(env);
                             for (int j=0; j <num_teams; j++) {
                                 expr += y[u][v][j];
@@ -578,6 +607,7 @@ rest5 (IloModel model, BoolVar3Matrix y, BoolVar4Matrix f){
                             expr.end();
                         }
         }
+
 }
 
 static void
@@ -590,10 +620,10 @@ rest6 (IloModel model, BoolVar4Matrix f, IntVarMatrix lambda){
                 IloExpr expr(env);
                 for(int p = 0; p<num_vertices; p++)
                     for(int q = 0; q<num_vertices; q++)
-                        if(p!=q && G[p][q] < 0){ // sum negatives arcs(A-)
+                        if(p!=q && G[p][q] < 0){ // sum of negatives arcs(A-)
                             expr += f[u][v][p][q];
                         }
-                model.add(expr - 2*lambda[u][v] == 0); // 2k, k in N
+                model.add(expr - 2*lambda[u][v] == 0); // pair number of negatives edges
                 expr.end();
             }
         }
@@ -671,9 +701,7 @@ static void
     {
         printf("Error opening file!\n");
         exit(1);
-    }/*else{
-        printf("\n abriu arqv");
-    }*/
+    }
 
     fprintf(file, "Solution value = %.1f \n", cplex.getObjValue());
 
@@ -722,7 +750,7 @@ static void
                    double timeF){
 
     char arq[600];
-    sprintf(arq, "%s/results/%d_Vertices.ods",CURRENT_DIR, num_vertices);
+    sprintf(arq, "%s/results/%d_Vertices_16-05-2022.ods",CURRENT_DIR, num_vertices);
     
     ofstream outputTable;
     outputTable.open(arq,ios:: app);
@@ -749,6 +777,28 @@ static void
 }
 
 
+static void
+    testeGrafos(){
+
+    char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
+    
+    cout << "-------------------------------------------------" << endl;
+    int vert = 25;
+    for(int i=0; i<3; i++){
+        for(int gclass = 1; gclass<4; gclass++){  // 1-3
+            
+            instanceReader(0,vert, gclass,1, intances_types[i]);
+            
+            if(isConnected())
+                cout << "The Graph is connected." << endl;
+            else
+                cout << "The Graph is not connected." << endl;
 
 
+            cout << "-------------------------------------------" << endl;
+            
+        }
+    }
+    
+}
 
