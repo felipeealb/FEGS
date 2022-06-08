@@ -8,6 +8,7 @@ ILOSTLBEGIN
 #include <filesystem>
 #include <list>
 #include<queue>
+#include <cmath>        // std::abs
 
 #include<fstream>
 using namespace std;
@@ -18,7 +19,7 @@ int num_skills;/*numero de habilidades*/
 int num_teams; /* quantidade de total de equipes/projetos*/
 
 int **G; /*matriz |n|x|n| grafo*/
-int **Graph_Zuv; /*matriz |n|x|n| grafo ponderado pelos caminhos minimos positivos*/
+int **G_Zuv; /*matriz |n|x|n| grafo ponderado pelos caminhos minimos positivos*/
 int **K; /*matriz |n|x|f| de pessoa - habilidade*/
 int **R; /* matriz demanda |m|x|f|: quantidade de cada pessoa com habilidade k_a em cada equipe*/
 
@@ -49,7 +50,7 @@ double get_wall_time(){
 
 //--------------------------------------------read data------------------------------------------------------------------
 //load matrix
-void load_Graph(char arq[], bool show, string instance_type){
+void load_G(char arq[], bool show, string instance_type){
 
     FILE *inst = fopen(arq,"r");
     if(!inst)
@@ -175,16 +176,16 @@ void load_R(char arq[], bool show){
 
 
 static void
-instanceReader(bool show, int vert, int graph_class, int class_type, string instance_type){
+instanceReader(bool show, int vert, int G_class, int class_type, string instance_type){
     char arq1[600]; char arq2[600]; char arq3[600];
     char arq_base[500];
     sprintf(arq_base, "%s/instances_COR", CURRENT_DIR);
 
     if (instance_type == "random"){
-        sprintf(instanceG, "%dverticesS%d", vert, graph_class);
+        sprintf(instanceG, "%dverticesS%d", vert, G_class);
     }
     else if (instance_type == "bitcoinotc" || instance_type == "epinions"){
-        sprintf(instanceG, "%dvertices_%s_S%d", vert, instance_type.c_str(), graph_class);
+        sprintf(instanceG, "%dvertices_%s_S%d", vert, instance_type.c_str(), G_class);
 
     }else{
         cout << "[INFO] not a valid instance type" << endl;
@@ -192,7 +193,7 @@ instanceReader(bool show, int vert, int graph_class, int class_type, string inst
 
 
     sprintf(arq1, "%s/%dVertices/%s.txt", arq_base, vert, instanceG);
-    cout << "[INFO] Read graph: "<< instanceG << endl;
+    cout << "[INFO] Read Graph: "<< instanceG << endl;
 
     sprintf(instanceKR, "%dVertices/class1/%d", vert, class_type);
     sprintf(arq2, "%s/%s/K.txt", arq_base, instanceKR);
@@ -200,22 +201,23 @@ instanceReader(bool show, int vert, int graph_class, int class_type, string inst
     cout << "[INFO] Instance class type: "<< instanceKR << endl;
 
 
-    load_Graph(arq1, show, instance_type); load_K(arq2, show); load_R(arq3, show);
+    load_G(arq1, show, instance_type); 
+    load_K(arq2, show); load_R(arq3, show);
 
 }
 
 
 static void
-    instanceReader (bool show, int vert, int graph_class, int class_type, string instance_type);
+    instanceReader (bool show, int vert, int G_class, int class_type, string instance_type);
 
 static void
     allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y);
 
 static void
-    allocVars_uv (IloEnv env, BoolVarMatrix f, IloIntVar lambda);
+    allocVars_uv (IloEnv env, BoolVarMatrix f, IloIntVar lambda, IloNumVarArray r);
 
 static void
-    createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v);
+    createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, IloNumVarArray r, int u, int v);
 
 static void
    createModel_Decomp (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y);
@@ -238,10 +240,14 @@ static void
 static void
    rest4_uv (IloModel model, BoolVarMatrix f, int u, int v);
 
-
 static void
    rest5_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v);
 
+static void
+   restCycleMTZ_uv (IloModel model, BoolVarMatrix f, IloNumVarArray r, int u, int v);
+
+static void
+   restCut_uv_1 (IloModel model, BoolVarMatrix f, int u, int v);
 
 static void
     displaySolution(IloCplex& cplex,
@@ -271,97 +277,383 @@ static void
                    int class_type);
 
 static void
-    createGraph_Zuv();
+    createG_Zuv();
 
+static void
+    initG_Zuv();
+
+static void
+    createG_Zuv_algorithm();
 
 static void
     testeGrafos();
+static void 
+    traverse(int u, bool visited[]);
+static bool 
+    isConnected(); 
 
-void traverse(int u, bool visited[]) {
-   visited[u] = true; //mark v as visited
-   for(int v = 0; v<num_vertices; v++) {
-      if(G[u][v]) {
-         if(!visited[v])
-            traverse(v, visited);
-      }
-   }
-}
-bool isConnected() {
-   bool *vis = new bool[num_vertices];
-   //for all vertex u as start point, check whether all nodes are visible or not
-   for(int u = 0; u < num_vertices; u++) {
-      for(int i = 0; i<num_vertices; i++)
-         vis[i] = false; //initialize as no node is visited
-         traverse(u, vis);
-      for(int i = 0; i<num_vertices; i++) {
-         if(!vis[i]) //if there is a node, not visited by traversal, graph is not connected
+bool all_visited(bool sptSet[]){
+
+    for(int i =0; i<num_vertices;i++){
+        if(sptSet[i] == false)
             return false;
-      }
-   }
-   return true;
+    }
+
+    return true;
 }
+void add_VerticePath(int **path_u, int u,int **path_v, int v){
+
+    int index;
+
+    for(int i =0;i<num_vertices;i++)
+        path_v[v][i] = path_u[u][i];
+
+    for(int i =num_vertices-1; i>0;i--)
+        if(path_v[v][i] == -1)
+            index = i;
+
+    path_v[v][index] = v;
+
+}
+
+bool isVertice_Cycle(int **path_u, int u, int v){
+    
+    for (int i = 0; i < num_vertices; i++)
+        if(path_u[u][i] == v)
+            return false;
+
+    return true;
+
+}
+
+bool isPath_void(int **path_v, int v){
+
+    for(int i =0;i<num_vertices;i++)
+        if (path_v[v][i] != -1)
+            return false;
+    return true;
+
+}
+
+void alg_CMC(int src)
+{
+    int **PosPath;
+    PosPath = new int *[num_vertices];
+    for(int i = 0; i <num_vertices; i++)
+        PosPath[i] = new int[num_vertices];
+
+    int **NegPath;
+    NegPath = new int *[num_vertices];
+    for(int i = 0; i <num_vertices; i++)
+        NegPath[i] = new int[num_vertices];
+
+    int dist[num_vertices][2];  // [neg_path, pos_path]
+
+    bool vSet[num_vertices]; // vSet[i] list vertex to be processed
+
+ 
+    // Initialize all distances as INFINITE and vSet[] as false
+    for (int i = 0; i < num_vertices; i++)
+        vSet[i] = false, dist[i][0] = 1000, dist[i][1] = 1000; //dist[i][0] = INT_MAX, dist[i][1] = INT_MAX;
+    
+    for (int i = 0; i < num_vertices; i++)
+        for (int j = 0; j < num_vertices; j++)
+            PosPath[i][j] = -1, NegPath[i][j] = -1;
+
+    // Distance of source vertex from itself is always 0
+    dist[src][0] = 0; dist[src][1] = 0; 
+    PosPath[src][0] = src;  NegPath[src][0] = src; 
+
+    // while have a vertex to be processed 
+    while(!all_visited(vSet)){
+
+        int min = INT_MAX, min_index;
+        for (int v = 0; v < num_vertices; v++){
+            if (vSet[v] == false && dist[v][1] < min)
+                min = dist[v][1], min_index = v;
+            if (vSet[v] == false && dist[v][0] < min)
+                min = dist[v][0], min_index = v;
+        }
+
+
+        int u = min_index;
+
+        vSet[u] = true;
+
+        for (int v = 0; v < num_vertices; v++){
+
+                if(u!=v && G[u][v] > 0){
+                    
+
+                    if(abs(dist[u][1]) + abs(G[u][v]) < abs(dist[v][1])){
+                         
+                        if(isVertice_Cycle(PosPath,u,v)){
+                            add_VerticePath(PosPath,u,PosPath,v);
+                            dist[v][1] = dist[u][1] + abs(G[u][v]);
+                            vSet[v] = false;
+                        }
+                        
+                    }else if (dist[v][1] == 1000 && isVertice_Cycle(PosPath,u,v) && isPath_void(PosPath,v)){
+                        add_VerticePath(PosPath,u,PosPath,v);
+                    }
+                    
+                    if(u!= src && dist[u][0] != 1000 && abs(dist[u][0]) + abs(G[u][v]) < abs(dist[v][0])){
+                        
+                        if(isVertice_Cycle(NegPath,u,v)){
+
+                            add_VerticePath(NegPath,u,NegPath,v);
+                            dist[v][0] = dist[u][0] + abs(G[u][v]);
+                            vSet[v] = false;  
+
+                        }
+
+                    }else if (dist[v][0] == 1000 && isVertice_Cycle(NegPath,u,v) && isPath_void(NegPath,v)){
+                        add_VerticePath(NegPath,u,NegPath,v);
+                    }
+
+                }else if(u!=v && G[u][v] < 0){
+                                    
+                    if(abs(dist[u][1]) + abs(G[u][v]) < abs(dist[v][0])){
+                         
+                        if(isVertice_Cycle(PosPath,u,v)){
+                            add_VerticePath(PosPath,u,NegPath,v);
+                            dist[v][0] = dist[u][1] + abs(G[u][v]);
+                            vSet[v] = false;
+                        }
+                        
+                    }else if (dist[v][0] == 1000 && isVertice_Cycle(PosPath,u,v) && isPath_void(NegPath,v)){
+                        add_VerticePath(PosPath,u,NegPath,v);
+                    }
+                    
+                    if(u!= src && dist[u][0] != 1000 && abs(dist[u][0]) + abs(G[u][v]) < abs(dist[v][1])){
+                        
+                        if(isVertice_Cycle(NegPath,u,v)){
+
+                            add_VerticePath(NegPath,u,PosPath,v);
+                            dist[v][1] = dist[u][0] + abs(G[u][v]);
+                            vSet[v] = false;  
+
+                        }
+
+                    }else if (dist[v][1] == 1000 && isVertice_Cycle(NegPath,u,v) && isPath_void(PosPath,v)){
+                        add_VerticePath(NegPath,u,PosPath,v);
+                    }
+            
+                }
+        }
+        
+    }
+ 
+    for (int v=0;v<num_vertices;v++){
+        G_Zuv[src][v] = dist[v][1];
+        G_Zuv[v][src] = dist[v][1];
+    }
+
+
+}
+
+static void
+    runTests();
+static void
+    runTests_MTZ();
 
 int main()
 {
     getcwd(CURRENT_DIR, 500);
     char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
-    // graph 25 vertices epinions_S3: disconnected (9-18-22) 
+    // G 25 vertices epinions_S3: disconnected (9-18-22) 
     
+
+    // instanceReader(0,6, 1,1, intances_types[0]);
+    // instanceReader(0,7, 1,1, intances_types[0]);
+    // initG_Zuv();
+    // alg_CMC(5);
+    // for(int u=0; u<num_vertices; u++)
+    //     alg_CMC(u);
+
+    // for (int u=0;u<num_vertices;u++)
+    //     for (int v=0;v<num_vertices;v++)
+    //         if(u==v)
+    //             G_Zuv[u][v] = 1;
+
+    // cout << "-------------------------------" << endl;
+    // cout << " Adjacency Matrix Zuv Algorithm \n";
+    // for (int u = 0; u < num_vertices; u++){
+    //     for (int v = 0; v < num_vertices; v++)
+    //         cout <<  G_Zuv[u][v] << " ";
+    //     cout<< "\n";
+    // }
+    // int **G_Zuv_A;
+    // for(int u=0; u<num_vertices; u++)
+    //     alg_CMC(u);
+    
+
+
+    // createG_Zuv();
+
+    // cout << "-------------------------------" << endl;
+    // cout << " Adjacency Matrix Zuv Subproblem \n";
+    // for (int u = 0; u < num_vertices; u++){
+    //     for (int v = 0; v < num_vertices; v++)
+    //         cout <<  G_Zuv[u][v] << " ";
+    //     cout<< "\n";
+    // }
+    
+
+    // for(int i=0; i<3; i++)
+    //     for(int gclass = 1; gclass<4; gclass++){  // 1-3
+    //             instanceReader(0,50, gclass,1, intances_types[i]);
+    //             // instanceReader(0,7, 1,1, intances_types[0]);
+    //             if(isConnected()){
+
+    //                 // cout << "Create graph Algorithm" << endl;
+    //                 // initG_Zuv();
+    //                 // for(int u=0; u<num_vertices; u++)
+    //                 //     alg_CMC(u);
+
+
+    //                 // int **G_Zuv_A;
+    //                 // G_Zuv_A = (int**)(malloc(num_vertices*sizeof(int*)));
+    //                 // for (int u=0;u<num_vertices;u++)
+    //                 //     G_Zuv_A[u] = (int*)malloc(num_vertices*sizeof(int));
+
+    //                 // for (int u = 0; u < num_vertices; u++)
+    //                 //     for (int v = 0; v < num_vertices; v++){
+    //                 //         if(u==v)
+    //                 //             G_Zuv_A[u][v] = 1;
+    //                 //         else
+    //                 //             G_Zuv_A[u][v] = G_Zuv[u][v];
+    //                 //     }
+                            
+    //                 // cout << "Create graph Subproblems " << endl;
+    //                 // createG_Zuv();
+                    
+    //                 // bool iguais = true;
+    //                 // for (int u = 0; u < num_vertices; u++)
+    //                 //     for (int v = 0; v < num_vertices; v++){
+    //                 //         if(G_Zuv_A[u][v] != G_Zuv[u][v] ){
+    //                 //             cout << "Grafos diferentes pos: " << u << " , " <<  v << endl;
+    //                 //             iguais = false;
+    //                 //         }
+    //                 //     }
+
+    //                 // if(iguais)
+    //                 //     cout << " \n\n Grafos são iguais " << endl;
+    //                 // else
+    //                 //     cout << "\n\n Grafos são diferentes " << endl;
+                    
+
+    //                 // cout << "-------------------------------" << endl;
+    //                 // cout << " Adjacency Matrix Zuv Algorithm \n";
+    //                 // for (int u = 0; u < num_vertices; u++){
+    //                 //     for (int v = 0; v < num_vertices; v++)
+    //                 //         cout <<  G_Zuv_A[u][v] << " ";
+    //                 //     cout<< "\n";
+    //                 // }
+    //                 // cout << "-------------------------------" << endl;
+    //                 // cout << " Adjacency Matrix Zuv Subproblem \n";
+    //                 // for (int u = 0; u < num_vertices; u++){
+    //                 //     for (int v = 0; v < num_vertices; v++)
+    //                 //         cout <<  G_Zuv[u][v] << " ";
+    //                 //     cout<< "\n";
+    //                 // }
+    //             }else{
+    //                 cout << " \n\n Graph is not connected "<< endl;
+    //             }
+
+    //         }
+
+
+
+
+        
+    
+    // runTests_MTZ();
+    runTests();
+   
+    return 0;
+}
+
+
+static void
+runTests(){
+
+    char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
     double cpu0_exec, cpu1_exec;
     cpu0_exec = get_wall_time();
-    int vert = 25;
+    int vert = 50;
     for(int i=0; i<3; i++){
         for(int gclass = 1; gclass<4; gclass++){  // 1-3
-            for(int ctype = 1; ctype < 7; ctype++){  //1-6
+            for(int ctype = 1; ctype<7; ctype++){  //1-6
 
                 IloEnv env;
 
                 try {
 
                     instanceReader(0,vert, gclass,ctype, intances_types[i]);
-
-                    double timeZ_start = get_wall_time();
-                    createGraph_Zuv();
-                    double timeZ_final = get_wall_time();
-                    double timeGraph = timeZ_final - timeZ_start;
-                    cout << "[INFO]: Create graph Zuv" << endl;
                     
-                    // create ILP problem
-                    IloModel model(env);
-                    cout << "[INFO]: Create variables decomposed" << endl;
-                    BoolVar3Matrix x(env,num_vertices);
-                    BoolVar3Matrix y(env,num_vertices);
-                    allocVars(env, x, y);
-                    cout << "[INFO]: Create model decomposed" << endl;
-                    createModel_Decomp(model, x, y);
-                    IloCplex cplex;
-                    cplex = IloCplex(model);
-                    // cplex.exportModel("FEGS_Decomposed.lp");
-                       
-                    double cpu0, cpu1;
-                    cplex.setParam(IloCplex::TiLim, 7200); // time limit 2h
-                    cplex.setParam(IloCplex::TreLim, 7000); // memory limit 7GB
-                    // cplex.setParam(IloCplex::WorkMem, 2000);
+                    if(isConnected()){
 
-                    cpu0 = get_wall_time();
-                    if (!cplex.solve()){
-                        env.error() << "[INFO]: Failed to optimize ILP." << endl;
+                        // Subproblem
+                        // cout << "[INFO]: Create Graph Zuv" << endl;
+                        // double timeZ_start = get_wall_time();
+                        // createG_Zuv();
+                        // double timeZ_final = get_wall_time();
+                        // double timeG = timeZ_final - timeZ_start;
+                        
+
+                        // Algorithm 
+                        cout << "[INFO]: Create Graph Zuv" << endl;
+                        double timeZ_start = get_wall_time();
+                        initG_Zuv();
+
+                        for(int u=0; u<num_vertices; u++)
+                            alg_CMC(u);
+
+                        // for(int u=0; u<num_vertices; u++)
+                        //     for(int v=u+1; v<num_vertices;v++)
+                        //         dijkstra(u,v);
+                            
+                        double timeZ_final = get_wall_time();
+                        double timeG = timeZ_final - timeZ_start;
+
+
+                        // create ILP problem
+                        IloModel model(env);
+                        cout << "[INFO]: Create variables decomposed" << endl;
+                        BoolVar3Matrix x(env,num_vertices);
+                        BoolVar3Matrix y(env,num_vertices);
+                        allocVars(env, x, y);
+                        cout << "[INFO]: Create model decomposed" << endl;
+                        createModel_Decomp(model, x, y);
+                        IloCplex cplex;
+                        cplex = IloCplex(model);
+                        // cplex.exportModel("FEGS_Decomposed.lp");
+                        
+                        double cpu0, cpu1;
+                        cplex.setParam(IloCplex::TiLim, 3600); // time limit 2h (7200)
+                        cplex.setParam(IloCplex::TreLim, 7000); // memory limit 7GB
+                        // cplex.setParam(IloCplex::WorkMem, 2000);
+
+                        cpu0 = get_wall_time();
+                        if (!cplex.solve()){
+                            env.error() << "[INFO]: Failed to optimize ILP." << endl;
+                            cout << "Solution status = " << cplex.getStatus()   << endl;
+                            throw(-1);
+                        }
+                        cpu1 = get_wall_time();
+                        double runTime = (cpu1 - cpu0) + timeG;
+                        
+
                         cout << "Solution status = " << cplex.getStatus()   << endl;
-                        throw(-1);
+                        cout << "Solution value  = " << cplex.getObjValue() << endl;
+                        cout << "cplex time: " << cplex.getTime() << endl;
+                        cout << "run time: " << runTime << endl;
+
+                        // displaySolution(cplex,x,y);
+                        // saveSolution(cplex,x,y,f,ctype);
+                        saveResults(cplex,runTime);
                     }
-                    cpu1 = get_wall_time();
-                    double runTime = (cpu1 - cpu0) + timeGraph;
-                    
-
-                    cout << "Solution status = " << cplex.getStatus()   << endl;
-                    cout << "Solution value  = " << cplex.getObjValue() << endl;
-                    cout << "cplex time: " << cplex.getTime() << endl;
-                    cout << "run time: " << runTime << endl;
-
-                    // displaySolution(cplex,x,y);
-                    // saveSolution(cplex,x,y,f,ctype);
-                    saveResults(cplex,runTime);
-
 
                 }catch (IloException& e) {
                     cerr << "Concert exception caught: " << e << endl;
@@ -380,19 +672,136 @@ int main()
     cout << "--------------------------------------------------------" << endl;
     cpu1_exec = get_wall_time();
     cout << "Total time: " << cpu1_exec - cpu0_exec << endl;
+}
 
-    return 0;
+static void
+runTests_MTZ(){
+
+    char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
+    double cpu0_exec, cpu1_exec;
+    cpu0_exec = get_wall_time();
+    int vert = 50;
+    for(int i=0; i<3; i++){
+        for(int gclass = 1; gclass<4; gclass++){  // 1-3
+            for(int ctype = 1; ctype<7; ctype++){  //1-6
+
+                IloEnv env;
+
+                try {
+
+                    instanceReader(0,vert, gclass,ctype, intances_types[i]);
+                    
+                    if(isConnected()){
+
+                        // Subproblem
+                        cout << "[INFO]: Create Graph Zuv" << endl;
+                        double timeZ_start = get_wall_time();
+                        createG_Zuv();
+                        double timeZ_final = get_wall_time();
+                        double timeG = timeZ_final - timeZ_start;
+                        
+
+                        // Algorithm 
+                        // cout << "[INFO]: Create Graph Zuv" << endl;
+                        // double timeZ_start = get_wall_time();
+                        // initG_Zuv();
+
+                        // for(int u=0; u<num_vertices; u++)
+                        //     alg_CMC(u);
+
+                        // // for(int u=0; u<num_vertices; u++)
+                        // //     for(int v=u+1; v<num_vertices;v++)
+                        // //         dijkstra(u,v);
+                            
+                        // double timeZ_final = get_wall_time();
+                        // double timeG = timeZ_final - timeZ_start;
+
+
+                        // create ILP problem
+                        IloModel model(env);
+                        cout << "[INFO]: Create variables decomposed" << endl;
+                        BoolVar3Matrix x(env,num_vertices);
+                        BoolVar3Matrix y(env,num_vertices);
+                        allocVars(env, x, y);
+                        cout << "[INFO]: Create model decomposed" << endl;
+                        createModel_Decomp(model, x, y);
+                        IloCplex cplex;
+                        cplex = IloCplex(model);
+                        // cplex.exportModel("FEGS_Decomposed.lp");
+                        
+                        double cpu0, cpu1;
+                        cplex.setParam(IloCplex::TiLim, 3600); // time limit 2h
+                        cplex.setParam(IloCplex::TreLim, 7000); // memory limit 7GB
+                        // cplex.setParam(IloCplex::WorkMem, 2000);
+
+                        cpu0 = get_wall_time();
+                        if (!cplex.solve()){
+                            env.error() << "[INFO]: Failed to optimize ILP." << endl;
+                            cout << "Solution status = " << cplex.getStatus()   << endl;
+                            throw(-1);
+                        }
+                        cpu1 = get_wall_time();
+                        double runTime = (cpu1 - cpu0) + timeG;
+                        
+
+                        cout << "Solution status = " << cplex.getStatus()   << endl;
+                        cout << "Solution value  = " << cplex.getObjValue() << endl;
+                        cout << "cplex time: " << cplex.getTime() << endl;
+                        cout << "run time: " << runTime << endl;
+
+                        // displaySolution(cplex,x,y);
+                        // saveSolution(cplex,x,y,f,ctype);
+                        saveResults(cplex,runTime);
+                    }
+
+                }catch (IloException& e) {
+                    cerr << "Concert exception caught: " << e << endl;
+                }
+                catch (...) {
+                    cerr << "Unknown exception caught" << endl;
+                }
+
+            env.end();
+
+            }
+
+        }
+    }
+
+    cout << "--------------------------------------------------------" << endl;
+    cpu1_exec = get_wall_time();
+    cout << "Total time: " << cpu1_exec - cpu0_exec << endl;
 }
 
 
 static void
-allocVars_uv (IloEnv env, BoolVarMatrix f, IloIntVar lambda){
+initG_Zuv(){
+
+    G_Zuv = (int**)(malloc(num_vertices*sizeof(int*)));
+    for (int u=0;u<num_vertices;u++)
+        G_Zuv[u] = (int*)malloc(num_vertices*sizeof(int));
+
+
+    for(int u=0; u<num_vertices;u++)
+        for(int v=0; v<num_vertices; v++)
+            if(u==v)
+                G_Zuv[u][v] = 1;
+            else
+                G_Zuv[u][v] = 1000;
+
+    // for(int u=0; u<num_vertices;u++)
+    //     for(int v=0; v<num_vertices; v++)
+    //         if(u==v)
+    //             G_Zuv[u][v] = 1;
+}
+
+
+static void
+allocVars_uv (IloEnv env, BoolVarMatrix f, IloIntVar lambda, IloNumVarArray r){
 
     // var f(u,v)[p][q]: if arc pq is used in the flow associate to path(u,v)
     for (int p=0; p<num_vertices; p++)
         f[p] = IloBoolVarArray(env, num_vertices);
-    
-    
 
 }
 
@@ -416,9 +825,17 @@ allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y){
 
 }
 
+static void
+createG_Zuv_algorithm(){
+
+
+
+
+
+}
 
 static void
-createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v){
+createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, IloNumVarArray r, int u, int v){
 
     // add var f(u,v)[p][q]
     if(G[u][v] < 1){ // and u,v not in E{+}
@@ -440,26 +857,39 @@ createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v)
         model.add(lambda);
     }
 
+
+    // add var r(u,v)[p]
+    if(G[u][v] < 1){ // and u,v not in E{+}
+        for(int p=0; p<num_vertices; p++){
+            char name[50];
+            sprintf(name, "r(%d,%d)%d", u+1, v+1,p+1);
+            r[p].setName(name);
+            model.add(r[p]);
+        }
+    }
+
     objFunction_uv (model,f,u,v);
     rest4_uv(model,f, u, v); // flow const 
     rest5_uv(model,f,lambda, u,v); // every path with neg edges is pair
+    restCycleMTZ_uv(model,f,r,u,v); // break cycle using MTZ
+
+    // restCut_uv_1(model,f,u,v); // not repeat vertice in path
 
 
 
 }
 
-
 static void
-createGraph_Zuv(){
+createG_Zuv(){
 
-    Graph_Zuv = (int**)(malloc(num_vertices*sizeof(int*)));
+    G_Zuv = (int**)(malloc(num_vertices*sizeof(int*)));
     for (int u=0;u<num_vertices;u++)
-        Graph_Zuv[u] = (int*)malloc(num_vertices*sizeof(int));
+        G_Zuv[u] = (int*)malloc(num_vertices*sizeof(int));
 
     for(int u=0; u<num_vertices;u++)
         for(int v=0; v<num_vertices; v++)
             if(u==v)
-                Graph_Zuv[u][v] = 1;
+                G_Zuv[u][v] = 1;
 
     for(int u=0; u<num_vertices;u++)
         for(int v=u+1; v<num_vertices; v++)
@@ -471,24 +901,25 @@ createGraph_Zuv(){
                     // cout << "[INFO]: Create variables" << endl;
                     BoolVarMatrix f(env,num_vertices);
                     IloIntVar lambda(env);
-                    allocVars_uv(env,f,lambda);
-                    createModel_uv(model,f,lambda,u,v);        // can optmize var f, put all dif u,v = zero or better use 2 indices
+                    IloNumVarArray r(env, num_vertices,0,num_vertices, ILOFLOAT);
+                    allocVars_uv(env,f,lambda,r);
+                    createModel_uv(model,f,lambda,r,u,v);       // can optmize var f, put all dif u,v = zero or better use 2 indices, only pq
                     IloCplex cplex;
                     cplex = IloCplex(model);
                     cplex.setOut(env.getNullStream());
                     if (!cplex.solve()){
                         // env.error() << "[INFO]: Failed to optimize ILP." << endl;
                         // cout << "Solution status = " << cplex.getStatus()   << endl;
-                        Graph_Zuv[u][v] = 1000000;
-                        Graph_Zuv[v][u] = 1000000;
+                        G_Zuv[u][v] = 1000;
+                        G_Zuv[v][u] = 1000;
                         throw(-1);
                     }
 
                     // cout << "Solution status = " << cplex.getStatus()   << endl;
                     // cout << "Solution value  = " << cplex.getObjValue() << endl;
 
-                    Graph_Zuv[u][v] = int(cplex.getObjValue());
-                    Graph_Zuv[v][u] = int(cplex.getObjValue());
+                    G_Zuv[u][v] = int(cplex.getObjValue());
+                    G_Zuv[v][u] = int(cplex.getObjValue());
 
                     // cout << "-------------------------------------------------- \n\n" << endl;
                 }catch (IloException& e) {
@@ -502,14 +933,14 @@ createGraph_Zuv(){
 
 
             }else{
-                Graph_Zuv[u][v] = 1;
-                Graph_Zuv[v][u] = 1;
+                G_Zuv[u][v] = 1;
+                G_Zuv[v][u] = 1;
             }
     // cout << "-------------------------------" << endl;
     // cout << " Adjacency Matrix Zuv\n";
     // for (int u = 0; u < num_vertices; u++){
     //     for (int v = 0; v < num_vertices; v++)
-    //         cout <<  Graph_Zuv[u][v] << " ";
+    //         cout <<  G_Zuv[u][v] << " ";
     //     cout<< "\n";
     // }
 
@@ -575,7 +1006,7 @@ objFunction_Decomp (IloModel model, BoolVar3Matrix y){
     for(int u=0; u<num_vertices; u++)
         for(int v=u+1; v<num_vertices; v++)
             for(int j = 0; j<num_teams; j++){
-                objExpr += Graph_Zuv[u][v]*y[u][v][j];  // (u,v) in E+
+                objExpr += G_Zuv[u][v]*y[u][v][j];  // (u,v) in E+
             }
 
     IloObjective obj = IloMinimize(env, objExpr);
@@ -691,6 +1122,41 @@ rest5_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, int u, int v){
         
 }
 
+
+static void
+restCycleMTZ_uv (IloModel model, BoolVarMatrix f, IloNumVarArray r, int u, int v){
+
+    IloEnv env = model.getEnv();
+    if(G[u][v] < 1 ){ // (u,v) not in E+
+
+        for(int p=0;p<num_vertices;p++)
+            for(int q=0;q<num_vertices;q++){
+                if(p!=q && abs(G[p][q])){
+                    IloExpr expr(env);
+                    expr = r[p] - r[q] + num_vertices*f[p][q];
+                    model.add(expr <= (num_vertices-1));
+                    expr.end();
+                }
+            }
+    }
+}
+
+static void
+restCut_uv_1 (IloModel model, BoolVarMatrix f, int u, int v){
+    IloEnv env = model.getEnv();
+
+    // pass only one time per vertice in a  u,v-flow
+    for(int q = 0; q<num_vertices; q++){
+        IloExpr expr(env);
+        for(int p=0; p<num_vertices;p++)
+            expr += f[p][q]; 
+    
+        model.add(expr<=1);
+        expr.end(); 
+
+    }
+        
+}
 
 static void
 displaySolution(IloCplex& cplex,
@@ -817,7 +1283,7 @@ static void
                    double timeF){
 
     char arq[600];
-    sprintf(arq, "%s/results/%d_Vertices_17-05-2022_Decomp.ods",CURRENT_DIR, num_vertices);
+    sprintf(arq, "%s/results/%d_Vertices_2022-06-08_Decomp_ALGORITHM_CMC.ods",CURRENT_DIR, num_vertices);
     
     ofstream outputTable;
     outputTable.open(arq,ios:: app);
@@ -844,6 +1310,29 @@ static void
 }
 
 
+void traverse(int u, bool visited[]) {
+   visited[u] = true; //mark v as visited
+   for(int v = 0; v<num_vertices; v++) {
+      if(G[u][v]) {
+         if(!visited[v])
+            traverse(v, visited);
+      }
+   }
+}
+bool isConnected() {
+   bool *vis = new bool[num_vertices];
+   //for all vertex u as start point, check whether all nodes are visible or not
+   for(int u = 0; u < num_vertices; u++) {
+      for(int i = 0; i<num_vertices; i++)
+         vis[i] = false; //initialize as no node is visited
+         traverse(u, vis);
+      for(int i = 0; i<num_vertices; i++) {
+         if(!vis[i]) //if there is a node, not visited by traversal, G is not connected
+            return false;
+      }
+   }
+   return true;
+}
 static void
     testeGrafos(){
 
@@ -857,9 +1346,9 @@ static void
             instanceReader(0,vert, gclass,1, intances_types[i]);
             
             if(isConnected())
-                cout << "The Graph is connected." << endl;
+                cout << "The G is connected." << endl;
             else
-                cout << "The Graph is not connected." << endl;
+                cout << "The G is not connected." << endl;
 
 
             cout << "-------------------------------------------" << endl;
