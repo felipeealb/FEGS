@@ -319,7 +319,7 @@ int main()
     getcwd(CURRENT_DIR, 500);
     // testeGrafos();  
     // dt nao ta funcionando
-    string sec_type = "dt";
+    string sec_type = "mtz";
     runTests(sec_type);
 
 
@@ -338,7 +338,7 @@ runTests(string SEC_type){
     cpu0_exec = get_wall_time();
     int vert = 25;
     for(int i=0; i<3; i++){
-        for(int gclass = 1; gclass<3; gclass++){  // 1-3
+        for(int gclass = 1; gclass<4; gclass++){  // 1-3
             for(int ctype = 1; ctype < 7; ctype++){  //1-6
 
                 IloEnv env;
@@ -1073,7 +1073,7 @@ static void
                    double timeF){
 
     char arq[600];
-    sprintf(arq, "%s/results/%d_Vertices_03-06-2022_cycle_dt.ods",CURRENT_DIR, num_vertices);
+    sprintf(arq, "%s/results/%d_Vertices_2022-06-13_cycle_mtz.ods",CURRENT_DIR, num_vertices);
     
     ofstream outputTable;
     outputTable.open(arq,ios:: app);

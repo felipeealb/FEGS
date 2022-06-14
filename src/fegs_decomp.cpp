@@ -31,6 +31,7 @@ char CURRENT_DIR[500];
 //double runTime;
 #define BILLION 1000000000L
 
+#define INF 1000000
 
 //typedef
 typedef IloArray<IloIntVarArray> IntVarMatrix;
@@ -49,6 +50,16 @@ double get_wall_time(){
 }
 
 //--------------------------------------------read data------------------------------------------------------------------
+void print_matrix(int **matrix){
+    
+    cout << " Adjacency Matrix \n";
+    for (int u = 0; u < num_vertices; u++){
+        for (int v = 0; v < num_vertices; v++)
+            cout <<  matrix[u][v] << " ";
+        cout<< "\n";
+    }
+}
+
 //load matrix
 void load_G(char arq[], bool show, string instance_type){
 
@@ -103,12 +114,7 @@ void load_G(char arq[], bool show, string instance_type){
 
     if(show){
         cout << endl << "Numero de individuos: " << num_vertices << endl;
-        cout << " Adjacency Matrix \n";
-        for (int u = 0; u < num_vertices; u++){
-            for (int v = 0; v < num_vertices; v++)
-                cout <<  G[u][v] << " ";
-            cout<< "\n";
-        }
+        print_matrix(G);
     }
 }
 
@@ -173,7 +179,6 @@ void load_R(char arq[], bool show){
 
     fclose(inst);
 }
-
 
 static void
 instanceReader(bool show, int vert, int G_class, int class_type, string instance_type){
@@ -292,10 +297,15 @@ static void
 static bool 
     isConnected(); 
 
-bool all_visited(bool sptSet[]){
+static void
+    compare_Zmatrices();
+
+
+//---------------------------------------------------------------
+bool all_visited(bool vSet[]){
 
     for(int i =0; i<num_vertices;i++){
-        if(sptSet[i] == false)
+        if(vSet[i] == false)
             return false;
     }
 
@@ -315,7 +325,6 @@ void add_VerticePath(int **path_u, int u,int **path_v, int v){
     path_v[v][index] = v;
 
 }
-
 bool isVertice_Cycle(int **path_u, int u, int v){
     
     for (int i = 0; i < num_vertices; i++)
@@ -325,7 +334,6 @@ bool isVertice_Cycle(int **path_u, int u, int v){
     return true;
 
 }
-
 bool isPath_void(int **path_v, int v){
 
     for(int i =0;i<num_vertices;i++)
@@ -335,26 +343,23 @@ bool isPath_void(int **path_v, int v){
 
 }
 
-void alg_CMC(int src)
+void CMC_algorithm(int src)
 {
-    int **PosPath;
-    PosPath = new int *[num_vertices];
-    for(int i = 0; i <num_vertices; i++)
-        PosPath[i] = new int[num_vertices];
 
-    int **NegPath;
-    NegPath = new int *[num_vertices];
+    int **PosPath; int **NegPath;
+    PosPath = new int *[num_vertices]; NegPath = new int *[num_vertices];
     for(int i = 0; i <num_vertices; i++)
-        NegPath[i] = new int[num_vertices];
+        PosPath[i] = new int[num_vertices], NegPath[i] = new int[num_vertices];
 
-    int dist[num_vertices][2];  // [neg_path, pos_path]
+
+    int dist[num_vertices][2];  // [|neg_path|, |pos_path|]
 
     bool vSet[num_vertices]; // vSet[i] list vertex to be processed
 
  
     // Initialize all distances as INFINITE and vSet[] as false
     for (int i = 0; i < num_vertices; i++)
-        vSet[i] = false, dist[i][0] = 1000, dist[i][1] = 1000; //dist[i][0] = INT_MAX, dist[i][1] = INT_MAX;
+        vSet[i] = false, dist[i][0] = INF, dist[i][1] = INF; //dist[i][0] = INT_MAX, dist[i][1] = INT_MAX;
     
     for (int i = 0; i < num_vertices; i++)
         for (int j = 0; j < num_vertices; j++)
@@ -367,23 +372,31 @@ void alg_CMC(int src)
     // while have a vertex to be processed 
     while(!all_visited(vSet)){
 
-        int min = INT_MAX, min_index;
+        int min = INF, min_index;
         for (int v = 0; v < num_vertices; v++){
-            if (vSet[v] == false && dist[v][1] < min)
-                min = dist[v][1], min_index = v;
             if (vSet[v] == false && dist[v][0] < min)
                 min = dist[v][0], min_index = v;
+            if (vSet[v] == false && dist[v][1] < min)
+                min = dist[v][1], min_index = v;
         }
+        // for (int v = num_vertices-1; v >= 0; v--){
+        //     if (vSet[v] == false && dist[v][0] < min)
+        //         min = dist[v][0], min_index = v;
+        //     if (vSet[v] == false && dist[v][1] < min)
+        //         min = dist[v][1], min_index = v;
+        // }
 
 
         int u = min_index;
 
         vSet[u] = true;
-
+        cout << "---------------------------" << endl;
+        cout << "vertice u=" << u+1 << endl;
         for (int v = 0; v < num_vertices; v++){
 
                 if(u!=v && G[u][v] > 0){
-                    
+                    cout << "--------------" << endl;
+                    cout << "aresta positiva " << u+1 << ", " << v+1 << endl;
 
                     if(abs(dist[u][1]) + abs(G[u][v]) < abs(dist[v][1])){
                          
@@ -393,11 +406,11 @@ void alg_CMC(int src)
                             vSet[v] = false;
                         }
                         
-                    }else if (dist[v][1] == 1000 && isVertice_Cycle(PosPath,u,v) && isPath_void(PosPath,v)){
+                    }else if (dist[v][1] == INF && isVertice_Cycle(PosPath,u,v) && isPath_void(PosPath,v)){
                         add_VerticePath(PosPath,u,PosPath,v);
                     }
                     
-                    if(u!= src && dist[u][0] != 1000 && abs(dist[u][0]) + abs(G[u][v]) < abs(dist[v][0])){
+                    if(u!= src && dist[u][0] != INF && abs(dist[u][0]) + abs(G[u][v]) < abs(dist[v][0])){
                         
                         if(isVertice_Cycle(NegPath,u,v)){
 
@@ -407,13 +420,16 @@ void alg_CMC(int src)
 
                         }
 
-                    }else if (dist[v][0] == 1000 && isVertice_Cycle(NegPath,u,v) && isPath_void(NegPath,v)){
+                    }else if (dist[v][0] == INF && isVertice_Cycle(NegPath,u,v) && isPath_void(NegPath,v)){
                         add_VerticePath(NegPath,u,NegPath,v);
                     }
 
                 }else if(u!=v && G[u][v] < 0){
-                                    
-                    if(abs(dist[u][1]) + abs(G[u][v]) < abs(dist[v][0])){
+
+                    cout << "--------------" << endl;
+                    cout << "aresta negativa " << u+1 << ", " << v+1 << endl;
+
+                    if(dist[u][1] != INF && abs(dist[u][1]) + abs(G[u][v]) < abs(dist[v][0])){
                          
                         if(isVertice_Cycle(PosPath,u,v)){
                             add_VerticePath(PosPath,u,NegPath,v);
@@ -421,11 +437,11 @@ void alg_CMC(int src)
                             vSet[v] = false;
                         }
                         
-                    }else if (dist[v][0] == 1000 && isVertice_Cycle(PosPath,u,v) && isPath_void(NegPath,v)){
+                    }else if (dist[v][0] == INF && isVertice_Cycle(PosPath,u,v) && isPath_void(NegPath,v)){
                         add_VerticePath(PosPath,u,NegPath,v);
                     }
                     
-                    if(u!= src && dist[u][0] != 1000 && abs(dist[u][0]) + abs(G[u][v]) < abs(dist[v][1])){
+                    if(u!= src && dist[u][0] != INF && abs(dist[u][0]) + abs(G[u][v]) < abs(dist[v][1])){
                         
                         if(isVertice_Cycle(NegPath,u,v)){
 
@@ -435,7 +451,7 @@ void alg_CMC(int src)
 
                         }
 
-                    }else if (dist[v][1] == 1000 && isVertice_Cycle(NegPath,u,v) && isPath_void(PosPath,v)){
+                    }else if (dist[v][1] == INF && isVertice_Cycle(NegPath,u,v) && isPath_void(PosPath,v)){
                         add_VerticePath(NegPath,u,PosPath,v);
                     }
             
@@ -443,7 +459,14 @@ void alg_CMC(int src)
         }
         
     }
- 
+    cout << "--------------" << endl;
+    cout << "caminho negativo 4:" << endl;
+    for(int i = 0; i<num_vertices;i++)
+        cout << NegPath[3][i]+1 << ", ";
+    cout << endl;
+    cout << "custo = " << dist[3][0] << endl;
+    cout << "--------------" << endl;
+
     for (int v=0;v<num_vertices;v++){
         G_Zuv[src][v] = dist[v][1];
         G_Zuv[v][src] = dist[v][1];
@@ -451,137 +474,38 @@ void alg_CMC(int src)
 
 
 }
-
+//---------------------------------------------------------------
 static void
-    runTests();
-static void
-    runTests_MTZ();
+    runTests(string Z_mode);
 
 int main()
 {
     getcwd(CURRENT_DIR, 500);
     char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
     // G 25 vertices epinions_S3: disconnected (9-18-22) 
-    
 
-    // instanceReader(0,6, 1,1, intances_types[0]);
-    // instanceReader(0,7, 1,1, intances_types[0]);
-    // initG_Zuv();
-    // alg_CMC(5);
+    // compare_Zmatrices();
+    instanceReader(0,7, 1,1, intances_types[0]);
+    cout << "Create graph Algorithm" << endl;
+    initG_Zuv();
     // for(int u=0; u<num_vertices; u++)
-    //     alg_CMC(u);
-
-    // for (int u=0;u<num_vertices;u++)
-    //     for (int v=0;v<num_vertices;v++)
-    //         if(u==v)
-    //             G_Zuv[u][v] = 1;
-
-    // cout << "-------------------------------" << endl;
-    // cout << " Adjacency Matrix Zuv Algorithm \n";
-    // for (int u = 0; u < num_vertices; u++){
-    //     for (int v = 0; v < num_vertices; v++)
-    //         cout <<  G_Zuv[u][v] << " ";
-    //     cout<< "\n";
-    // }
-    // int **G_Zuv_A;
-    // for(int u=0; u<num_vertices; u++)
-    //     alg_CMC(u);
-    
-
-
-    // createG_Zuv();
-
-    // cout << "-------------------------------" << endl;
-    // cout << " Adjacency Matrix Zuv Subproblem \n";
-    // for (int u = 0; u < num_vertices; u++){
-    //     for (int v = 0; v < num_vertices; v++)
-    //         cout <<  G_Zuv[u][v] << " ";
-    //     cout<< "\n";
-    // }
-    
-
-    // for(int i=0; i<3; i++)
-    //     for(int gclass = 1; gclass<4; gclass++){  // 1-3
-    //             instanceReader(0,50, gclass,1, intances_types[i]);
-    //             // instanceReader(0,7, 1,1, intances_types[0]);
-    //             if(isConnected()){
-
-    //                 // cout << "Create graph Algorithm" << endl;
-    //                 // initG_Zuv();
-    //                 // for(int u=0; u<num_vertices; u++)
-    //                 //     alg_CMC(u);
-
-
-    //                 // int **G_Zuv_A;
-    //                 // G_Zuv_A = (int**)(malloc(num_vertices*sizeof(int*)));
-    //                 // for (int u=0;u<num_vertices;u++)
-    //                 //     G_Zuv_A[u] = (int*)malloc(num_vertices*sizeof(int));
-
-    //                 // for (int u = 0; u < num_vertices; u++)
-    //                 //     for (int v = 0; v < num_vertices; v++){
-    //                 //         if(u==v)
-    //                 //             G_Zuv_A[u][v] = 1;
-    //                 //         else
-    //                 //             G_Zuv_A[u][v] = G_Zuv[u][v];
-    //                 //     }
-                            
-    //                 // cout << "Create graph Subproblems " << endl;
-    //                 // createG_Zuv();
-                    
-    //                 // bool iguais = true;
-    //                 // for (int u = 0; u < num_vertices; u++)
-    //                 //     for (int v = 0; v < num_vertices; v++){
-    //                 //         if(G_Zuv_A[u][v] != G_Zuv[u][v] ){
-    //                 //             cout << "Grafos diferentes pos: " << u << " , " <<  v << endl;
-    //                 //             iguais = false;
-    //                 //         }
-    //                 //     }
-
-    //                 // if(iguais)
-    //                 //     cout << " \n\n Grafos são iguais " << endl;
-    //                 // else
-    //                 //     cout << "\n\n Grafos são diferentes " << endl;
-                    
-
-    //                 // cout << "-------------------------------" << endl;
-    //                 // cout << " Adjacency Matrix Zuv Algorithm \n";
-    //                 // for (int u = 0; u < num_vertices; u++){
-    //                 //     for (int v = 0; v < num_vertices; v++)
-    //                 //         cout <<  G_Zuv_A[u][v] << " ";
-    //                 //     cout<< "\n";
-    //                 // }
-    //                 // cout << "-------------------------------" << endl;
-    //                 // cout << " Adjacency Matrix Zuv Subproblem \n";
-    //                 // for (int u = 0; u < num_vertices; u++){
-    //                 //     for (int v = 0; v < num_vertices; v++)
-    //                 //         cout <<  G_Zuv[u][v] << " ";
-    //                 //     cout<< "\n";
-    //                 // }
-    //             }else{
-    //                 cout << " \n\n Graph is not connected "<< endl;
-    //             }
-
-    //         }
-
-
-
-
-        
-    
-    // runTests_MTZ();
-    runTests();
+    CMC_algorithm(6);
+    print_matrix(G_Zuv);
+    // runTests("MTZ");
+    // runTests("CMC");
    
     return 0;
 }
 
 
 static void
-runTests(){
+runTests(string Z_mode){
 
     char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
     double cpu0_exec, cpu1_exec;
     cpu0_exec = get_wall_time();
-    int vert = 50;
+    
+    int vert = 25;
     for(int i=0; i<3; i++){
         for(int gclass = 1; gclass<4; gclass++){  // 1-3
             for(int ctype = 1; ctype<7; ctype++){  //1-6
@@ -593,30 +517,24 @@ runTests(){
                     instanceReader(0,vert, gclass,ctype, intances_types[i]);
                     
                     if(isConnected()){
-
-                        // Subproblem
-                        // cout << "[INFO]: Create Graph Zuv" << endl;
-                        // double timeZ_start = get_wall_time();
-                        // createG_Zuv();
-                        // double timeZ_final = get_wall_time();
-                        // double timeG = timeZ_final - timeZ_start;
                         
 
-                        // Algorithm 
                         cout << "[INFO]: Create Graph Zuv" << endl;
                         double timeZ_start = get_wall_time();
-                        initG_Zuv();
-
-                        for(int u=0; u<num_vertices; u++)
-                            alg_CMC(u);
-
-                        // for(int u=0; u<num_vertices; u++)
-                        //     for(int v=u+1; v<num_vertices;v++)
-                        //         dijkstra(u,v);
+                        
+                        // Subproblems
+                        if(Z_mode == "mtz" || Z_mode == "MTZ"){
+                            createG_Zuv();
+                        }
+                        // Algorithm 
+                        if(Z_mode == "cmc" || Z_mode == "CMC"){
+                            initG_Zuv();
+                            for(int u=0; u<num_vertices; u++)
+                                CMC_algorithm(u);
+                        }
                             
                         double timeZ_final = get_wall_time();
                         double timeG = timeZ_final - timeZ_start;
-
 
                         // create ILP problem
                         IloModel model(env);
@@ -674,105 +592,6 @@ runTests(){
     cout << "Total time: " << cpu1_exec - cpu0_exec << endl;
 }
 
-static void
-runTests_MTZ(){
-
-    char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
-    double cpu0_exec, cpu1_exec;
-    cpu0_exec = get_wall_time();
-    int vert = 50;
-    for(int i=0; i<3; i++){
-        for(int gclass = 1; gclass<4; gclass++){  // 1-3
-            for(int ctype = 1; ctype<7; ctype++){  //1-6
-
-                IloEnv env;
-
-                try {
-
-                    instanceReader(0,vert, gclass,ctype, intances_types[i]);
-                    
-                    if(isConnected()){
-
-                        // Subproblem
-                        cout << "[INFO]: Create Graph Zuv" << endl;
-                        double timeZ_start = get_wall_time();
-                        createG_Zuv();
-                        double timeZ_final = get_wall_time();
-                        double timeG = timeZ_final - timeZ_start;
-                        
-
-                        // Algorithm 
-                        // cout << "[INFO]: Create Graph Zuv" << endl;
-                        // double timeZ_start = get_wall_time();
-                        // initG_Zuv();
-
-                        // for(int u=0; u<num_vertices; u++)
-                        //     alg_CMC(u);
-
-                        // // for(int u=0; u<num_vertices; u++)
-                        // //     for(int v=u+1; v<num_vertices;v++)
-                        // //         dijkstra(u,v);
-                            
-                        // double timeZ_final = get_wall_time();
-                        // double timeG = timeZ_final - timeZ_start;
-
-
-                        // create ILP problem
-                        IloModel model(env);
-                        cout << "[INFO]: Create variables decomposed" << endl;
-                        BoolVar3Matrix x(env,num_vertices);
-                        BoolVar3Matrix y(env,num_vertices);
-                        allocVars(env, x, y);
-                        cout << "[INFO]: Create model decomposed" << endl;
-                        createModel_Decomp(model, x, y);
-                        IloCplex cplex;
-                        cplex = IloCplex(model);
-                        // cplex.exportModel("FEGS_Decomposed.lp");
-                        
-                        double cpu0, cpu1;
-                        cplex.setParam(IloCplex::TiLim, 3600); // time limit 2h
-                        cplex.setParam(IloCplex::TreLim, 7000); // memory limit 7GB
-                        // cplex.setParam(IloCplex::WorkMem, 2000);
-
-                        cpu0 = get_wall_time();
-                        if (!cplex.solve()){
-                            env.error() << "[INFO]: Failed to optimize ILP." << endl;
-                            cout << "Solution status = " << cplex.getStatus()   << endl;
-                            throw(-1);
-                        }
-                        cpu1 = get_wall_time();
-                        double runTime = (cpu1 - cpu0) + timeG;
-                        
-
-                        cout << "Solution status = " << cplex.getStatus()   << endl;
-                        cout << "Solution value  = " << cplex.getObjValue() << endl;
-                        cout << "cplex time: " << cplex.getTime() << endl;
-                        cout << "run time: " << runTime << endl;
-
-                        // displaySolution(cplex,x,y);
-                        // saveSolution(cplex,x,y,f,ctype);
-                        saveResults(cplex,runTime);
-                    }
-
-                }catch (IloException& e) {
-                    cerr << "Concert exception caught: " << e << endl;
-                }
-                catch (...) {
-                    cerr << "Unknown exception caught" << endl;
-                }
-
-            env.end();
-
-            }
-
-        }
-    }
-
-    cout << "--------------------------------------------------------" << endl;
-    cpu1_exec = get_wall_time();
-    cout << "Total time: " << cpu1_exec - cpu0_exec << endl;
-}
-
 
 static void
 initG_Zuv(){
@@ -784,15 +603,10 @@ initG_Zuv(){
 
     for(int u=0; u<num_vertices;u++)
         for(int v=0; v<num_vertices; v++)
-            if(u==v)
+            if(u==v || G[u][v] == 1)
                 G_Zuv[u][v] = 1;
-            else
-                G_Zuv[u][v] = 1000;
 
-    // for(int u=0; u<num_vertices;u++)
-    //     for(int v=0; v<num_vertices; v++)
-    //         if(u==v)
-    //             G_Zuv[u][v] = 1;
+
 }
 
 
@@ -826,11 +640,54 @@ allocVars (IloEnv env, BoolVar3Matrix x, BoolVar3Matrix y){
 }
 
 static void
-createG_Zuv_algorithm(){
+createG_Zuv(){
+
+    initG_Zuv();
+
+    for(int u=0; u<num_vertices;u++)
+        for(int v=u+1; v<num_vertices; v++)
+            if(G[u][v] < 1 ){
+
+                IloEnv env;
+                try{
+                    IloModel model(env);
+                    
+                    BoolVarMatrix f(env,num_vertices);
+                    IloIntVar lambda(env);
+                    IloNumVarArray r(env, num_vertices,0,num_vertices, ILOFLOAT);
+                    allocVars_uv(env,f,lambda,r);
+                    createModel_uv(model,f,lambda,r,u,v);       // can optmize var f, put all dif u,v = zero or better use 2 indices, only pq
+                    IloCplex cplex;
+                    cplex = IloCplex(model);
+                    cplex.setOut(env.getNullStream());
+                    
+                    if (!cplex.solve()){
+                        
+                        // infeasible -> infinite
+                        G_Zuv[u][v] = INF; 
+                        G_Zuv[v][u] = INF;
+                        throw(-1);
+                    }
 
 
+                    G_Zuv[u][v] = int(cplex.getObjValue());
+                    G_Zuv[v][u] = int(cplex.getObjValue());
+
+                    // cout << "-------------------------------------------------- \n\n" << endl;
+                }catch (IloException& e) {
+                        cerr << "Concert exception caught: " << e << endl;
+                    }
+                    catch (...) {
+                        // cerr << "Unknown exception caught" << endl;
+                    }
+
+                env.end();
 
 
+            }else if(G[u][v] == 1){
+                G_Zuv[u][v] = 1;
+                G_Zuv[v][u] = 1;
+            }
 
 }
 
@@ -880,74 +737,6 @@ createModel_uv (IloModel model, BoolVarMatrix f, IloIntVar lambda, IloNumVarArra
 }
 
 static void
-createG_Zuv(){
-
-    G_Zuv = (int**)(malloc(num_vertices*sizeof(int*)));
-    for (int u=0;u<num_vertices;u++)
-        G_Zuv[u] = (int*)malloc(num_vertices*sizeof(int));
-
-    for(int u=0; u<num_vertices;u++)
-        for(int v=0; v<num_vertices; v++)
-            if(u==v)
-                G_Zuv[u][v] = 1;
-
-    for(int u=0; u<num_vertices;u++)
-        for(int v=u+1; v<num_vertices; v++)
-            if(G[u][v] < 1 ){
-
-                IloEnv env;
-                try{
-                    IloModel model(env);
-                    // cout << "[INFO]: Create variables" << endl;
-                    BoolVarMatrix f(env,num_vertices);
-                    IloIntVar lambda(env);
-                    IloNumVarArray r(env, num_vertices,0,num_vertices, ILOFLOAT);
-                    allocVars_uv(env,f,lambda,r);
-                    createModel_uv(model,f,lambda,r,u,v);       // can optmize var f, put all dif u,v = zero or better use 2 indices, only pq
-                    IloCplex cplex;
-                    cplex = IloCplex(model);
-                    cplex.setOut(env.getNullStream());
-                    if (!cplex.solve()){
-                        // env.error() << "[INFO]: Failed to optimize ILP." << endl;
-                        // cout << "Solution status = " << cplex.getStatus()   << endl;
-                        G_Zuv[u][v] = 1000;
-                        G_Zuv[v][u] = 1000;
-                        throw(-1);
-                    }
-
-                    // cout << "Solution status = " << cplex.getStatus()   << endl;
-                    // cout << "Solution value  = " << cplex.getObjValue() << endl;
-
-                    G_Zuv[u][v] = int(cplex.getObjValue());
-                    G_Zuv[v][u] = int(cplex.getObjValue());
-
-                    // cout << "-------------------------------------------------- \n\n" << endl;
-                }catch (IloException& e) {
-                        cerr << "Concert exception caught: " << e << endl;
-                    }
-                    catch (...) {
-                        // cerr << "Unknown exception caught" << endl;
-                    }
-
-                env.end();
-
-
-            }else{
-                G_Zuv[u][v] = 1;
-                G_Zuv[v][u] = 1;
-            }
-    // cout << "-------------------------------" << endl;
-    // cout << " Adjacency Matrix Zuv\n";
-    // for (int u = 0; u < num_vertices; u++){
-    //     for (int v = 0; v < num_vertices; v++)
-    //         cout <<  G_Zuv[u][v] << " ";
-    //     cout<< "\n";
-    // }
-
-}
-
-
-static void
 createModel_Decomp (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y){
 
     // add var x[u][j][s] in model
@@ -979,7 +768,6 @@ createModel_Decomp (IloModel model, BoolVar3Matrix x, BoolVar3Matrix y){
     rest3(model,x,y); // linearization y with x
 
 }
-
 
 static void
 objFunction_uv (IloModel model, BoolVarMatrix f, int u, int v){
@@ -1283,7 +1071,7 @@ static void
                    double timeF){
 
     char arq[600];
-    sprintf(arq, "%s/results/%d_Vertices_2022-06-08_Decomp_ALGORITHM_CMC.ods",CURRENT_DIR, num_vertices);
+    sprintf(arq, "%s/results/%d_Vertices_2022-06-13_Decomp_ALGORITHM_CMC.ods",CURRENT_DIR, num_vertices);
     
     ofstream outputTable;
     outputTable.open(arq,ios:: app);
@@ -1309,6 +1097,115 @@ static void
 
 }
 
+
+
+static void
+    compare_Zmatrices(){
+
+        char intances_types[3][12] =   {"random", "bitcoinotc", "epinions"};
+
+
+        instanceReader(0,7, 1,1, intances_types[0]);
+        cout << "Create graph Algorithm" << endl;
+        initG_Zuv();
+        for(int u=0; u<num_vertices; u++)
+            CMC_algorithm(u);
+
+
+        int **G_Zuv_A;
+        G_Zuv_A = (int**)(malloc(num_vertices*sizeof(int*)));
+        for (int u=0;u<num_vertices;u++)
+            G_Zuv_A[u] = (int*)malloc(num_vertices*sizeof(int));
+
+        for (int u = 0; u < num_vertices; u++)
+            for (int v = 0; v < num_vertices; v++){
+                if(u==v)
+                    G_Zuv_A[u][v] = 1;
+                else
+                    G_Zuv_A[u][v] = G_Zuv[u][v];
+            }
+                
+        cout << "Create graph Subproblems " << endl;
+        createG_Zuv();
+        
+        bool iguais = true;
+        for (int u = 0; u < num_vertices; u++)
+            for (int v = 0; v < num_vertices; v++){
+                if(G_Zuv_A[u][v] != G_Zuv[u][v] ){
+                    // cout << "Grafos diferentes pos: " << u << " , " <<  v << endl;
+                    iguais = false;
+                }
+                
+            }
+
+        if(iguais)
+            cout << "Grafos são iguais \n\n " << endl;
+        else
+            cout << "Grafos são diferentes \n\n " << endl;
+        
+
+        cout << "-------------------------------" << endl;
+
+        // for(int i=0; i<3; i++)
+        //     for(int gclass = 1; gclass<4; gclass++){  // 1-3
+
+        //         instanceReader(0,25, gclass,1, intances_types[i]);
+        //         // instanceReader(0,7, 1,1, intances_types[i]);
+        //         if(isConnected()){
+
+        //             cout << "Create graph Algorithm" << endl;
+        //             initG_Zuv();
+        //             for(int u=0; u<num_vertices; u++)
+        //                 CMC_algorithm(u);
+
+
+        //             int **G_Zuv_A;
+        //             G_Zuv_A = (int**)(malloc(num_vertices*sizeof(int*)));
+        //             for (int u=0;u<num_vertices;u++)
+        //                 G_Zuv_A[u] = (int*)malloc(num_vertices*sizeof(int));
+
+        //             for (int u = 0; u < num_vertices; u++)
+        //                 for (int v = 0; v < num_vertices; v++){
+        //                     if(u==v)
+        //                         G_Zuv_A[u][v] = 1;
+        //                     else
+        //                         G_Zuv_A[u][v] = G_Zuv[u][v];
+        //                 }
+                            
+        //             cout << "Create graph Subproblems " << endl;
+        //             createG_Zuv();
+                    
+        //             bool iguais = true;
+        //             for (int u = 0; u < num_vertices; u++)
+        //                 for (int v = 0; v < num_vertices; v++){
+        //                     if(G_Zuv_A[u][v] != G_Zuv[u][v] ){
+        //                         // cout << "Grafos diferentes pos: " << u << " , " <<  v << endl;
+        //                         iguais = false;
+        //                     }
+                            
+        //                 }
+
+        //             if(iguais)
+        //                 cout << "Grafos são iguais \n\n " << endl;
+        //             else
+        //                 cout << "Grafos são diferentes \n\n " << endl;
+                    
+
+        //             cout << "-------------------------------" << endl;
+        //             // print_matrix(G_Zuv_A);
+        //             // cout << "-------------------------------" << endl;
+        //             // print_matrix(G_Zuv);
+
+        //         }else{
+        //             cout << "Graph is not connected "<< endl;
+        //             cout << "-------------------------------" << endl;
+        //         }
+
+        // }
+
+
+
+}
 
 void traverse(int u, bool visited[]) {
    visited[u] = true; //mark v as visited
